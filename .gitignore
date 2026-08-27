@@ -1,0 +1,20 @@
+# Rust
+/target/
+/Cargo.lock
+
+# Node
+/node_modules/
+/dist-js/
+examples/demo/node_modules/
+examples/demo/package-lock.json
+examples/demo/pnpm-lock.yaml
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# WorkBuddy local memory (per-project notes)
+.workbuddy/

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-bold"
+description = "Enables the set_bold command without any pre-configured scope."
+commands.allow = ["set_bold"]
+
+[[permission]]
+identifier = "deny-set-bold"
+description = "Denies the set_bold command without any pre-configured scope."
+commands.deny = ["set_bold"]

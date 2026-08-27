@@ -1,0 +1,21 @@
+# Default permission set for tauri-plugin-multiline-taskband.
+#
+# Grants every command the plugin exposes. Tighten this in production by moving
+# to a scoped permission set that only allows the commands your app actually
+# uses.
+
+[default]
+description = "Allows all multiline-taskband commands."
+permissions = [
+  "allow-create",
+  "allow-remove",
+  "allow-set-text",
+  "allow-set-font-sizes",
+  "allow-set-layout",
+  "allow-set-colors",
+  "allow-set-bold",
+  "allow-set-alignment",
+  "allow-set-visible",
+  "allow-rect",
+  "allow-is-visible",
+]

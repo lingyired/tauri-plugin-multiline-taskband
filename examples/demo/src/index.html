@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multiline Taskband Demo</title>
+    <script type="module" src="/main.js" defer></script>
+  </head>
+
+  <body>
+    <main class="container">
+      <h1>Multiline Taskband Plugin</h1>
+      <p class="muted">
+        tauri-plugin-multiline-taskband demo · Windows 10/11 任务栏双行文字。
+        每个实例是叠加在任务栏上的透明窗口：<b>left</b> 贴开始按钮右侧，
+        <b>right</b> 贴通知区（托盘）左侧；同侧多实例按创建顺序横向排开。
+      </p>
+
+      <section class="card">
+        <h2>新建实例</h2>
+        <div class="create-form">
+          <input id="new-id" placeholder="id（如 group-a）" />
+          <select id="new-side">
+            <option value="right">right（贴托盘）</option>
+            <option value="left">left（贴开始）</option>
+          </select>
+          <input id="new-top" placeholder="上行文字（如 A股）" />
+          <input id="new-bottom" placeholder="下行文字（如 +1.23%）" />
+          <button id="create-btn">创建</button>
+        </div>
+        <div class="row">
+          <button type="button" id="show-all-btn">全部显示</button>
+          <button type="button" id="hide-all-btn">全部隐藏</button>
+          <span id="instance-status" class="muted"></span>
+        </div>
+        <ul id="instance-list" class="instance-list"></ul>
+      </section>
+    </main>
+  </body>
+</html>
