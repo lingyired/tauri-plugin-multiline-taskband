@@ -295,6 +295,18 @@
       "type": "string",
       "oneOf": [
         {
+          "description": "Enables the close_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-close-popup",
+          "markdownDescription": "Enables the close_popup command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the close_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-close-popup",
+          "markdownDescription": "Denies the close_popup command without any pre-configured scope."
+        },
+        {
           "description": "Enables the create command without any pre-configured scope.",
           "type": "string",
           "const": "allow-create",
@@ -317,6 +329,18 @@
           "type": "string",
           "const": "deny-is-visible",
           "markdownDescription": "Denies the is_visible command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-open-popup",
+          "markdownDescription": "Enables the open_popup command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-open-popup",
+          "markdownDescription": "Denies the open_popup command without any pre-configured scope."
         },
         {
           "description": "Enables the rect command without any pre-configured scope.",
@@ -353,6 +377,18 @@
           "type": "string",
           "const": "deny-set-alignment",
           "markdownDescription": "Denies the set_alignment command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_auto_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-auto-popup",
+          "markdownDescription": "Enables the set_auto_popup command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_auto_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-auto-popup",
+          "markdownDescription": "Denies the set_auto_popup command without any pre-configured scope."
         },
         {
           "description": "Enables the set_bold command without any pre-configured scope.",
@@ -403,6 +439,30 @@
           "markdownDescription": "Denies the set_layout command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-menu",
+          "markdownDescription": "Enables the set_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-menu",
+          "markdownDescription": "Denies the set_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_popup_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-popup-window",
+          "markdownDescription": "Enables the set_popup_window command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_popup_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-popup-window",
+          "markdownDescription": "Denies the set_popup_window command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_text command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-text",
@@ -427,10 +487,22 @@
           "markdownDescription": "Denies the set_visible command without any pre-configured scope."
         },
         {
-          "description": "Allows all multiline-taskband commands.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-remove`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-layout`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`",
+          "description": "Enables the toggle_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-toggle-popup",
+          "markdownDescription": "Enables the toggle_popup command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the toggle_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-toggle-popup",
+          "markdownDescription": "Denies the toggle_popup command without any pre-configured scope."
+        },
+        {
+          "description": "Allows all multiline-taskband commands.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-remove`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-layout`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-popup-window`\n- `allow-set-auto-popup`\n- `allow-open-popup`\n- `allow-close-popup`\n- `allow-toggle-popup`\n- `allow-set-menu`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Allows all multiline-taskband commands.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-remove`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-layout`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`"
+          "markdownDescription": "Allows all multiline-taskband commands.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-remove`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-layout`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-popup-window`\n- `allow-set-auto-popup`\n- `allow-open-popup`\n- `allow-close-popup`\n- `allow-toggle-popup`\n- `allow-set-menu`"
         }
       ]
     }

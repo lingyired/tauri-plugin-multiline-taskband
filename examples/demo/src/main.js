@@ -31,6 +31,12 @@ const api = {
   setVisible: (o) => invoke("plugin:multiline-taskband|set_visible", { payload: o }),
   rect: (o) => invoke("plugin:multiline-taskband|rect", { payload: o }),
   isVisible: (o) => invoke("plugin:multiline-taskband|is_visible", { payload: o }),
+  setPopupWindow: (o) => invoke("plugin:multiline-taskband|set_popup_window", { payload: o }),
+  setAutoPopup: (o) => invoke("plugin:multiline-taskband|set_auto_popup", { payload: o }),
+  openPopup: (o) => invoke("plugin:multiline-taskband|open_popup", { payload: o }),
+  closePopup: (o) => invoke("plugin:multiline-taskband|close_popup", { payload: o }),
+  togglePopup: (o) => invoke("plugin:multiline-taskband|toggle_popup", { payload: o }),
+  setMenu: (o) => invoke("plugin:multiline-taskband|set_menu", { payload: o }),
 };
 
 // ---------------------------------------------------------------------------
@@ -41,6 +47,39 @@ async function createInstance(id, side, top, bottom) {
   created.add(id);
   await listen(`multiline-taskband://${id}//ready`, () => {
     document.querySelector(`[data-id="${id}"] .ready-badge`).textContent = "ready";
+  });
+  // Left-clicking an instance's label on the taskbar opens its settings popup
+  // (plugin auto-popup); both clicks and popup state are echoed on the card.
+  await listen(`multiline-taskband://${id}//click`, (e) => {
+    const el = document.querySelector(`[data-id="${id}"] .click-out`);
+    if (el) {
+      const p = e.payload.position;
+      el.textContent = `点击: ${e.payload.button} @ ${p.x},${p.y}`;
+    }
+  });
+  await listen(`multiline-taskband://${id}//popup-open`, (e) => {
+    const el = document.querySelector(`[data-id="${id}"] .popup-out`);
+    if (el) el.textContent = "popup 打开";
+  });
+  await listen(`multiline-taskband://${id}//popup-close`, (e) => {
+    const el = document.querySelector(`[data-id="${id}"] .popup-out`);
+    if (el) el.textContent = "popup 关闭";
+  });
+  // Right-click context menu: "打开设置界面" re-shows the main window and
+  // "退出 App" exits the process. The actions are handled on the Rust side
+  // (works even while the main window is hidden); here we only echo the
+  // selection on the card.
+  await api.setMenu({
+    id,
+    items: [
+      { type: "item", id: "open-settings", text: "打开设置界面" },
+      { type: "separator" },
+      { type: "item", id: "quit", text: "退出 App" },
+    ],
+  }).catch((e) => console.error(`setMenu ${id}:`, e));
+  await listen(`multiline-taskband://${id}//menu`, (e) => {
+    const el = document.querySelector(`[data-id="${id}"] .popup-out`);
+    if (el) el.textContent = `菜单: ${e.payload.itemId}`;
   });
   renderList();
   updateStatus();
@@ -109,6 +148,9 @@ function instanceCard(id) {
 
   // --- rect / isVisible ---
   li.appendChild(rectRow());
+
+  // --- click / popup feedback ---
+  li.appendChild(feedbackRow());
 
   bindEvents(li, id, side);
   return li;
@@ -190,6 +232,16 @@ function rectRow() {
   row.innerHTML = `
     <button type="button" class="rect-btn">rect()</button>
     <span class="rect-out muted"></span>
+  `;
+  return row;
+}
+
+function feedbackRow() {
+  const row = document.createElement("div");
+  row.className = "field-row";
+  row.innerHTML = `
+    <span class="click-out muted"></span>
+    <span class="popup-out muted"></span>
   `;
   return row;
 }
@@ -301,6 +353,11 @@ document.querySelector("#hide-all-btn").addEventListener("click", () => setAllVi
 
 // Create the 5 presets on boot.
 (async () => {
+  // The settings popup window is declared in tauri.conf.json (label "popup").
+  // Register it with the plugin and keep auto-popup on left click enabled —
+  // hosts must call setPopupWindow before the first click.
+  await api.setPopupWindow({ label: "popup" }).catch((e) => console.error("setPopupWindow:", e));
+  await api.setAutoPopup({ enabled: true }).catch(() => {});
   for (const p of PRESETS) {
     await createInstance(p.id, p.side, p.top, p.bottom);
   }

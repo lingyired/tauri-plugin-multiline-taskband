@@ -101,3 +101,52 @@ pub(crate) async fn is_visible<R: Runtime>(
         visible: app.multiline_taskband().is_visible(payload.id)?,
     })
 }
+
+#[command]
+pub(crate) async fn set_popup_window<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetPopupWindowRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband().set_popup_window(payload.label)
+}
+
+#[command]
+pub(crate) async fn set_auto_popup<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetAutoPopupRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband().set_auto_popup(payload.enabled)
+}
+
+#[command]
+pub(crate) async fn open_popup<R: Runtime>(
+    app: AppHandle<R>,
+    payload: IdRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband().open_popup(payload.id)
+}
+
+#[command]
+pub(crate) async fn close_popup<R: Runtime>(
+    app: AppHandle<R>,
+    payload: IdRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband().close_popup(payload.id)
+}
+
+#[command]
+pub(crate) async fn toggle_popup<R: Runtime>(
+    app: AppHandle<R>,
+    payload: IdRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband().toggle_popup(payload.id)
+}
+
+#[command]
+pub(crate) async fn set_menu<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetMenuRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband()
+        .set_menu(payload.id, payload.items)
+}

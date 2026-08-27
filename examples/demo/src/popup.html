@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Taskband Item Settings</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+      .card {
+        margin: 12px;
+        height: calc(100% - 24px);
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 12px;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        color: #1d1d1f;
+        overflow-y: auto;
+      }
+      @media (prefers-color-scheme: dark) {
+        .card {
+          background: rgba(40, 40, 44, 0.95);
+          border-color: rgba(255, 255, 255, 0.08);
+          color: #f2f2f7;
+        }
+      }
+      h2 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      p {
+        margin: 0;
+        font-size: 12px;
+        opacity: 0.7;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12px;
+      }
+      input[type="text"],
+      input[type="number"] {
+        padding: 7px 9px;
+        border-radius: 8px;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        background: rgba(255, 255, 255, 0.6);
+        color: inherit;
+        font-size: 13px;
+      }
+      input[type="color"] {
+        padding: 0;
+        height: 30px;
+        width: 100%;
+        border-radius: 8px;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        cursor: pointer;
+      }
+      select {
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+        background: rgba(255, 255, 255, 0.6);
+        color: inherit;
+        font-size: 12px;
+      }
+      @media (prefers-color-scheme: dark) {
+        input[type="text"],
+        input[type="number"],
+        select {
+          border-color: rgba(255, 255, 255, 0.15);
+          background: rgba(0, 0, 0, 0.25);
+        }
+      }
+      fieldset {
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 10px;
+        padding: 8px 10px;
+        margin: 0;
+        font-size: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      @media (prefers-color-scheme: dark) {
+        fieldset {
+          border-color: rgba(255, 255, 255, 0.15);
+        }
+      }
+      legend {
+        font-size: 11px;
+        font-weight: 600;
+        opacity: 0.85;
+        padding: 0 4px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+      .inline {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+      }
+      button {
+        flex: 1;
+        padding: 8px 10px;
+        border-radius: 9px;
+        border: none;
+        background: #0a84ff;
+        color: white;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: rgba(0, 0, 0, 0.12);
+        color: inherit;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="card">
+      <h2 id="popup-header">实例设置</h2>
+      <p>点击任务栏上的该实例，在这里单独调整它的文字与外观。</p>
+
+      <fieldset>
+        <legend>文字</legend>
+        <div class="field">
+          <label for="popup-top">上行文字</label>
+          <input type="text" id="popup-top" value="" />
+        </div>
+        <div class="field">
+          <label for="popup-bottom">下行文字</label>
+          <input type="text" id="popup-bottom" value="" />
+        </div>
+        <div class="row">
+          <button id="popup-text-update">应用</button>
+          <button id="popup-text-reset" class="secondary">重置</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>字号与布局</legend>
+        <div class="field">
+          <label for="popup-layout">布局</label>
+          <select id="popup-layout">
+            <option value="0">0 emphasis-bottom（上小下大）</option>
+            <option value="1">1 emphasis-top（上大下小）</option>
+            <option value="2">2 equal（等大居中）</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="field" style="flex: 1">
+            <label for="popup-top-size">上行字号 (pt)</label>
+            <input type="number" id="popup-top-size" min="6" max="24" step="0.5" value="9" />
+          </div>
+          <div class="field" style="flex: 1">
+            <label for="popup-bottom-size">下行字号 (pt)</label>
+            <input type="number" id="popup-bottom-size" min="6" max="24" step="0.5" value="12" />
+          </div>
+        </div>
+        <div class="row">
+          <button id="popup-sizes">应用字号</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>上行颜色</legend>
+        <div class="inline">
+          <select id="popup-top-color-type">
+            <option value="default">default（跟随系统）</option>
+            <option value="solid">solid（固定色）</option>
+          </select>
+          <input type="color" id="popup-top-color" value="#ffffff" disabled />
+        </div>
+        <div class="field">
+          <label for="popup-top-hex">Hex</label>
+          <input type="text" id="popup-top-hex" value="#ffffff" disabled />
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>下行颜色</legend>
+        <div class="inline">
+          <select id="popup-bottom-color-type">
+            <option value="default">default（跟随系统）</option>
+            <option value="solid">solid（固定色）</option>
+          </select>
+          <input type="color" id="popup-bottom-color" value="#ffffff" disabled />
+        </div>
+        <div class="field">
+          <label for="popup-bottom-hex">Hex</label>
+          <input type="text" id="popup-bottom-hex" value="#ffffff" disabled />
+        </div>
+        <div class="row">
+          <button id="popup-colors">应用颜色</button>
+          <button id="popup-reset-colors" class="secondary">重置默认</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>加粗</legend>
+        <div class="inline">
+          <label><input type="checkbox" id="popup-top-bold" /> 上行加粗</label>
+        </div>
+        <div class="inline">
+          <label><input type="checkbox" id="popup-bottom-bold" /> 下行加粗</label>
+        </div>
+        <div class="row">
+          <button id="popup-bold">应用加粗</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>对齐（每行独立）</legend>
+        <div class="field">
+          <label for="popup-top-align">上行</label>
+          <select id="popup-top-align">
+            <option value="0" selected>左</option>
+            <option value="1">中</option>
+            <option value="2">右</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="popup-bottom-align">下行</label>
+          <select id="popup-bottom-align">
+            <option value="0" selected>左</option>
+            <option value="1">中</option>
+            <option value="2">右</option>
+          </select>
+        </div>
+        <div class="row">
+          <button id="popup-alignment">应用对齐</button>
+        </div>
+      </fieldset>
+
+      <div class="row">
+        <button id="popup-close" class="secondary">关闭</button>
+      </div>
+    </div>
+    <script type="module" src="/popup.js" defer></script>
+  </body>
+</html>

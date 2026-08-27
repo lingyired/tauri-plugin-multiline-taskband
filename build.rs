@@ -10,6 +10,12 @@ const COMMANDS: &[&str] = &[
     "set_visible",
     "rect",
     "is_visible",
+    "set_popup_window",
+    "set_auto_popup",
+    "open_popup",
+    "close_popup",
+    "toggle_popup",
+    "set_menu",
 ];
 
 fn main() {

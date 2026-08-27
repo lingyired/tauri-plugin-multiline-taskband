@@ -18,4 +18,10 @@ permissions = [
   "allow-set-visible",
   "allow-rect",
   "allow-is-visible",
+  "allow-set-popup-window",
+  "allow-set-auto-popup",
+  "allow-open-popup",
+  "allow-close-popup",
+  "allow-toggle-popup",
+  "allow-set-menu",
 ]

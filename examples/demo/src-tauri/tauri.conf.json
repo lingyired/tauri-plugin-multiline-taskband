@@ -13,6 +13,20 @@
         "title": "Multiline Taskband Demo",
         "width": 880,
         "height": 680
+      },
+      {
+        "label": "popup",
+        "title": "Taskband Item Settings",
+        "url": "popup.html",
+        "width": 400,
+        "height": 640,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "shadow": false,
+        "resizable": false
       }
     ],
     "security": {

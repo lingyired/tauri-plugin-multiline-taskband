@@ -128,6 +128,47 @@ pub struct SetVisibleRequest {
     pub visible: bool,
 }
 
+/// Select which Tauri webview window is used as the settings popup.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPopupWindowRequest {
+    /// Window label (as registered in `tauri.conf.json`).
+    pub label: String,
+}
+
+/// Enable/disable automatically toggling the popup on left click.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetAutoPopupRequest {
+    pub enabled: bool,
+}
+
+/// A context-menu item descriptor, shown on right click of an instance.
+///
+/// Mirrors the menubar plugin's `MenuItemDescriptor` (subset: `item` and
+/// `separator`; check/submenu are not supported on the taskbar yet).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum MenuItemDescriptor {
+    Item {
+        id: String,
+        text: String,
+        #[serde(default)]
+        enabled: Option<bool>,
+    },
+    Separator,
+}
+
+/// Attach/detach the right-click context menu of an instance. Pass `items:
+/// None` to detach.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetMenuRequest {
+    pub id: String,
+    #[serde(default)]
+    pub items: Option<Vec<MenuItemDescriptor>>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VisibilityResponse {

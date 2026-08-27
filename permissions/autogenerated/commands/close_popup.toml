@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-close-popup"
+description = "Enables the close_popup command without any pre-configured scope."
+commands.allow = ["close_popup"]
+
+[[permission]]
+identifier = "deny-close-popup"
+description = "Denies the close_popup command without any pre-configured scope."
+commands.deny = ["close_popup"]

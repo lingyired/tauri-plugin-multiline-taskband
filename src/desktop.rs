@@ -162,4 +162,89 @@ impl<R: Runtime> MultilineTaskband<R> {
             Err(crate::Error::UnsupportedPlatform)
         }
     }
+
+    /// Set which Tauri window is used as the popup. Call before the first open.
+    pub fn set_popup_window(&self, label: String) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_popup_window(label)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = label;
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
+    /// Enable/disable automatically toggling the popup on left click.
+    pub fn set_auto_popup(&self, enabled: bool) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_auto_popup(enabled)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = enabled;
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
+    /// Show the popup window anchored next to the given instance.
+    pub fn open_popup(&self, id: String) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::open_popup(id)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = id;
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
+    /// Hide the popup window.
+    pub fn close_popup(&self, id: String) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::close_popup(id)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = id;
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
+    /// Toggle the popup window's visibility, anchored next to the given
+    /// instance.
+    pub fn toggle_popup(&self, id: String) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::toggle_popup(id)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = id;
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
+    /// Attach (or detach, with `None`) the right-click context menu of an
+    /// instance. Selections are emitted as `multiline-taskband://{id}//menu`
+    /// with `{ id, itemId }`.
+    pub fn set_menu(
+        &self,
+        id: String,
+        items: Option<Vec<MenuItemDescriptor>>,
+    ) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_menu(id, items)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (id, items);
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
 }

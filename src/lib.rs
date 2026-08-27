@@ -43,6 +43,12 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::set_visible,
             commands::rect,
             commands::is_visible,
+            commands::set_popup_window,
+            commands::set_auto_popup,
+            commands::open_popup,
+            commands::close_popup,
+            commands::toggle_popup,
+            commands::set_menu,
         ])
         .setup(|app, api| {
             let multiline_taskband = desktop::init(app, api)?;

@@ -2361,10 +2361,16 @@
           "markdownDescription": "Denies the unminimize command without any pre-configured scope."
         },
         {
-          "description": "Allows all multiline-taskband commands.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-remove`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-layout`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`",
+          "description": "Allows all multiline-taskband commands.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-remove`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-layout`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-popup-window`\n- `allow-set-auto-popup`\n- `allow-open-popup`\n- `allow-close-popup`\n- `allow-toggle-popup`\n- `allow-set-menu`",
           "type": "string",
           "const": "multiline-taskband:default",
-          "markdownDescription": "Allows all multiline-taskband commands.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-remove`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-layout`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`"
+          "markdownDescription": "Allows all multiline-taskband commands.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-remove`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-layout`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-popup-window`\n- `allow-set-auto-popup`\n- `allow-open-popup`\n- `allow-close-popup`\n- `allow-toggle-popup`\n- `allow-set-menu`"
+        },
+        {
+          "description": "Enables the close_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:allow-close-popup",
+          "markdownDescription": "Enables the close_popup command without any pre-configured scope."
         },
         {
           "description": "Enables the create command without any pre-configured scope.",
@@ -2377,6 +2383,12 @@
           "type": "string",
           "const": "multiline-taskband:allow-is-visible",
           "markdownDescription": "Enables the is_visible command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the open_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:allow-open-popup",
+          "markdownDescription": "Enables the open_popup command without any pre-configured scope."
         },
         {
           "description": "Enables the rect command without any pre-configured scope.",
@@ -2395,6 +2407,12 @@
           "type": "string",
           "const": "multiline-taskband:allow-set-alignment",
           "markdownDescription": "Enables the set_alignment command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_auto_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:allow-set-auto-popup",
+          "markdownDescription": "Enables the set_auto_popup command without any pre-configured scope."
         },
         {
           "description": "Enables the set_bold command without any pre-configured scope.",
@@ -2421,6 +2439,18 @@
           "markdownDescription": "Enables the set_layout command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:allow-set-menu",
+          "markdownDescription": "Enables the set_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_popup_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:allow-set-popup-window",
+          "markdownDescription": "Enables the set_popup_window command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_text command without any pre-configured scope.",
           "type": "string",
           "const": "multiline-taskband:allow-set-text",
@@ -2433,6 +2463,18 @@
           "markdownDescription": "Enables the set_visible command without any pre-configured scope."
         },
         {
+          "description": "Enables the toggle_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:allow-toggle-popup",
+          "markdownDescription": "Enables the toggle_popup command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the close_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:deny-close-popup",
+          "markdownDescription": "Denies the close_popup command without any pre-configured scope."
+        },
+        {
           "description": "Denies the create command without any pre-configured scope.",
           "type": "string",
           "const": "multiline-taskband:deny-create",
@@ -2443,6 +2485,12 @@
           "type": "string",
           "const": "multiline-taskband:deny-is-visible",
           "markdownDescription": "Denies the is_visible command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the open_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:deny-open-popup",
+          "markdownDescription": "Denies the open_popup command without any pre-configured scope."
         },
         {
           "description": "Denies the rect command without any pre-configured scope.",
@@ -2461,6 +2509,12 @@
           "type": "string",
           "const": "multiline-taskband:deny-set-alignment",
           "markdownDescription": "Denies the set_alignment command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_auto_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:deny-set-auto-popup",
+          "markdownDescription": "Denies the set_auto_popup command without any pre-configured scope."
         },
         {
           "description": "Denies the set_bold command without any pre-configured scope.",
@@ -2487,6 +2541,18 @@
           "markdownDescription": "Denies the set_layout command without any pre-configured scope."
         },
         {
+          "description": "Denies the set_menu command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:deny-set-menu",
+          "markdownDescription": "Denies the set_menu command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_popup_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:deny-set-popup-window",
+          "markdownDescription": "Denies the set_popup_window command without any pre-configured scope."
+        },
+        {
           "description": "Denies the set_text command without any pre-configured scope.",
           "type": "string",
           "const": "multiline-taskband:deny-set-text",
@@ -2497,6 +2563,12 @@
           "type": "string",
           "const": "multiline-taskband:deny-set-visible",
           "markdownDescription": "Denies the set_visible command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the toggle_popup command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:deny-toggle-popup",
+          "markdownDescription": "Denies the toggle_popup command without any pre-configured scope."
         },
         {
           "description": "This permission set allows opening `mailto:`, `tel:`, `https://` and `http://` urls using their default application\nas well as reveal file in directories using default file explorer\n#### This default permission set includes:\n\n- `allow-open-url`\n- `allow-reveal-item-in-dir`\n- `allow-default-urls`",

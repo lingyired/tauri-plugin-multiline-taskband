@@ -88,6 +88,59 @@ export interface SetVisibleOptions {
   visible: boolean
 }
 
+/** Select which Tauri webview window is used as the settings popup. */
+export interface PopupWindowOptions {
+  /** Window label (as registered in `tauri.conf.json`). */
+  label: string
+}
+
+/** Enable/disable automatically toggling the popup on left click. */
+export interface SetAutoPopupOptions {
+  enabled: boolean
+}
+
+/**
+ * Emitted when the user clicks an instance's label on the taskbar. Payload
+ * mirrors Tauri's own `TrayIconEvent::Click`: `button` is `'left'` or
+ * `'right'`, `buttonState` is `'down'` (the overlay fires on mouse-down).
+ */
+export interface ClickEvent {
+  id: string
+  position: { x: number; y: number }
+  rect: Rect
+  button: 'left' | 'right'
+  buttonState: 'up' | 'down'
+}
+
+/** Emitted when the settings popup opens/closes for an instance. */
+export interface PopupEvent {
+  id: string
+  window: string
+}
+
+/**
+ * A right-click context-menu item descriptor. `item` selections are reported
+ * back through {@link onMenuSelection}; `separator` inserts a divider.
+ */
+export type MenuItemDescriptor =
+  | { type: 'item'; id: string; text: string; enabled?: boolean }
+  | { type: 'separator' }
+
+/** Attach/detach the right-click context menu of an instance. */
+export interface SetMenuOptions {
+  id: string
+  /** Menu items. Omit or pass `null` to detach the menu. */
+  items?: MenuItemDescriptor[] | null
+}
+
+/** Emitted when an item in an instance's right-click menu is selected. */
+export interface MenuSelectionEvent {
+  /** The taskbar instance the menu belongs to. */
+  id: string
+  /** The `id` of the selected menu item. */
+  itemId: string
+}
+
 export interface ReadyEvent {
   id: string
 }
@@ -101,6 +154,10 @@ export function eventName(id: string, name: string): string {
 }
 
 export const EVENT_READY = (id: string) => eventName(id, 'ready')
+export const EVENT_CLICK = (id: string) => eventName(id, 'click')
+export const EVENT_POPUP_OPEN = (id: string) => eventName(id, 'popup-open')
+export const EVENT_POPUP_CLOSE = (id: string) => eventName(id, 'popup-close')
+export const EVENT_MENU = (id: string) => eventName(id, 'menu')
 
 // ---------------------------------------------------------------------------
 // Commands
@@ -169,6 +226,107 @@ export async function isVisible(options: IdOptions): Promise<boolean> {
     { payload: options }
   )
   return result.visible
+}
+
+/**
+ * Set which Tauri window is used as the settings popup. Call before the first
+ * open. The window must already exist (e.g. declared in `tauri.conf.json`
+ * with `visible: false`); the plugin positions it next to the clicked
+ * instance, shows it and hides it on focus loss.
+ */
+export async function setPopupWindow(options: PopupWindowOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_popup_window', {
+    payload: options,
+  })
+}
+
+/**
+ * Enable/disable automatically toggling the popup when an instance is
+ * left-clicked. Defaults to `true`.
+ */
+export async function setAutoPopup(options: SetAutoPopupOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_auto_popup', {
+    payload: options,
+  })
+}
+
+/** Show the popup window anchored next to the given instance. */
+export async function openPopup(options: IdOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|open_popup', { payload: options })
+}
+
+/** Hide the popup window. */
+export async function closePopup(options: IdOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|close_popup', { payload: options })
+}
+
+/** Toggle the popup window's visibility, anchored next to the given instance. */
+export async function togglePopup(options: IdOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|toggle_popup', { payload: options })
+}
+
+/**
+ * Subscribe to clicks on one instance's taskbar label. Returns the usual Tauri
+ * unlisten function.
+ */
+export async function onClick(
+  id: string,
+  handler: (event: ClickEvent) => void
+): Promise<UnlistenFn> {
+  return await listen<ClickEvent>(EVENT_CLICK(id), (e) => handler(e.payload))
+}
+
+/**
+ * Subscribe to the settings popup opening for one instance. Returns the usual
+ * Tauri unlisten function.
+ */
+export async function onPopupOpen(
+  id: string,
+  handler: (event: PopupEvent) => void
+): Promise<UnlistenFn> {
+  return await listen<PopupEvent>(EVENT_POPUP_OPEN(id), (e) => handler(e.payload))
+}
+
+/**
+ * Subscribe to the settings popup closing for one instance. Returns the usual
+ * Tauri unlisten function.
+ */
+export async function onPopupClose(
+  id: string,
+  handler: (event: PopupEvent) => void
+): Promise<UnlistenFn> {
+  return await listen<PopupEvent>(EVENT_POPUP_CLOSE(id), (e) => handler(e.payload))
+}
+
+/**
+ * Attach a right-click context menu to an instance, shown at the mouse
+ * position. Pass `items: null` (or omit it) to detach the menu, mirroring
+ * Tauri's `setMenu(null)` semantics.
+ *
+ * The menu is a real Tauri/muda menu built on the Rust side. Listen for
+ * selections with {@link onMenuSelection}.
+ */
+export async function setMenu(options: SetMenuOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_menu', { payload: options })
+}
+
+/**
+ * Subscribe to right-click context-menu selections for one instance. Returns
+ * the usual Tauri unlisten function.
+ *
+ * ```ts
+ * await onMenuSelection('right-1', (e) => {
+ *   if (e.itemId === 'quit') exit()
+ * })
+ * ```
+ */
+export async function onMenuSelection(
+  id: string,
+  handler: (event: MenuSelectionEvent) => void
+): Promise<UnlistenFn> {
+  return await listen<MenuSelectionEvent>(EVENT_MENU(id), (e) =>
+    handler(e.payload)
+  )
 }
 
 /**

@@ -1,12 +1,21 @@
 //! Windows taskbar text rendering.
 //!
-//! Strategy (mirrors TrafficMonitor's Win11 "overlay" approach):
-//!   * Each instance is its own top-level `WS_EX_LAYERED` window, made
-//!     transparent to mouse input (`WS_EX_TRANSPARENT`) so it never steals
-//!     clicks from the real taskbar beneath it.
+//! Strategy (mirrors TrafficMonitor's taskbar embedding approach):
+//!   * Each instance is a `WS_EX_LAYERED` window that is embedded as a
+//!     **child of the taskbar** via `SetParent(hwnd, Shell_TrayWnd)` (Win11)
+//!     — exactly what TrafficMonitor does (`TaskBarDlg::OnInitDialog`:
+//!     `SetParent(this->m_hWnd, GetParentHwnd())`). A child window is always
+//!     painted above its parent, so clicking the taskbar (which raises the
+//!     taskbar's z-order) can never push the text below it — no flash.
 //!   * Instances are pinned to the **left** edge (just right of the Start
 //!     button) or the **right** edge (just left of the notification/tray area)
-//!     of the Windows taskbar, on both Windows 10 and 11.
+//!     of the Windows taskbar, on both Windows 10 and 11. Position is
+//!     expressed in taskbar client coordinates once embedded.
+//!   * Windows are **clickable** (no `WS_EX_TRANSPARENT`): a left click on an
+//!     instance toggles its settings popup (a Tauri webview window, see
+//!     `set_popup_window`), a right click emits a `click` event the host can
+//!     use for its own context menu. The overlay only covers its own small
+//!     label area, so the rest of the taskbar is unaffected.
 //!   * A dedicated UI thread owns every window and runs a message pump; all
 //!     public calls are marshalled to it through an `mpsc` channel + a
 //!     `PostThreadMessageW` wake-up. This keeps Win32 object creation on a
@@ -14,6 +23,10 @@
 //!     run on arbitrary async threads.
 //!   * A `WinEventHook` on the taskbar's `EVENT_OBJECT_LOCATIONCHANGE`
 //!     re-lays-out every instance when the taskbar moves/resizes.
+//!   * If embedding fails (e.g. explorer is in an odd state), instances fall
+//!     back to top-level `WS_EX_TOPMOST` windows; the keep-on-top timer then
+//!     re-asserts their z-order above the taskbar (pre-Win11-embedding
+//!     behaviour).
 //!
 //! NOTE: this module can only be compiled for `cfg(target_os = "windows")`.
 //! It is written against `windows-sys` 0.52 and has **not** been run on a
@@ -24,9 +37,11 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::os::windows::ffi::OsStrExt;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::time::{Duration, Instant};
 
-use tauri::{Emitter, Wry};
+use tauri::menu::{ContextMenu as TauriContextMenu, Menu as TauriMenu, MenuItem as TauriMenuItem, MenuEvent, PredefinedMenuItem as TauriPredefined};
+use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent, Wry};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -36,7 +51,7 @@ use windows_sys::Win32::UI::Accessibility::*;
 use windows_sys::Win32::UI::HiDpi::{GetDpiForSystem, SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_AWARE};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-use crate::models::{ColorStyle, Rect, Side};
+use crate::models::{ColorStyle, MenuItemDescriptor, Rect, Side};
 
 // ---------------------------------------------------------------------------
 // Small local constants (avoid depending on glob re-exports that may differ
@@ -83,6 +98,51 @@ static UI_THREAD: OnceLock<u32> = OnceLock::new();
 static APP: OnceLock<tauri::AppHandle<Wry>> = OnceLock::new();
 /// Taskbar HWND, so the WinEvent hook can recognise it.
 static TASKBAR_HWND: Mutex<HWND> = Mutex::new(0);
+
+// ---------------------------------------------------------------------------
+// Popup window state (mirrors tauri-plugin-multiline-menubar)
+// ---------------------------------------------------------------------------
+
+/// Label of the Tauri window used as the popup (default "popup").
+static POPUP_WINDOW: RwLock<Option<Arc<str>>> = RwLock::new(None);
+
+/// Whether a left click automatically toggles the popup window.
+static AUTO_POPUP: Mutex<bool> = Mutex::new(true);
+
+/// While set, the popup's blur handler ignores focus loss (prevents the
+/// popup from immediately closing when it opens and steals focus).
+static POPUP_IGNORE_BLUR_UNTIL: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// Ensures the popup auto-hide handler is attached only once.
+static POPUP_HANDLER_ATTACHED: Mutex<bool> = Mutex::new(false);
+
+/// Instance id whose popup is currently open, so the blur handler can emit
+/// `popup-close` on the right instance's channel.
+static ACTIVE_POPUP_ID: Mutex<Option<String>> = Mutex::new(None);
+
+/// Event name used to tell the popup window which instance opened it and what
+/// that instance's current state is. Delivered with `emit_to` so only the
+/// popup window receives it.
+const POPUP_OPEN_TARGET_EVENT: &str = "multiline-taskband://popup//open";
+
+// ---------------------------------------------------------------------------
+// Right-click context menu state
+// ---------------------------------------------------------------------------
+
+/// Per-instance right-click context menus (built with `tauri::menu` so menu
+/// events flow through tauri's own `MenuEvent` bridge — muda's global
+/// `set_event_handler` is already owned by tauri).
+static MENUS: Mutex<Option<HashMap<String, Arc<TauriMenu<Wry>>>>> = Mutex::new(None);
+
+/// Ensures the global menu-event handler (emitting `{id}//menu`) is installed
+/// only once.
+static MENU_HANDLER_ATTACHED: Mutex<bool> = Mutex::new(false);
+
+/// Separator between the instance id and the action id in a menu item's id:
+/// menu item ids are `{instance_id}::{action_id}`, which lets the single
+/// global `AppHandle::on_menu_event` route each selection back to the right
+/// instance.
+const MENU_ID_SEPARATOR: &str = "::";
 
 /// Instances, owned exclusively by the UI thread.
 static INSTANCES: OnceLock<Mutex<HashMap<String, Inst>>> = OnceLock::new();
@@ -136,6 +196,10 @@ struct Inst {
     top_align: i32,
     bottom_align: i32,
     visible: bool,
+    /// True when the window has been embedded as a child of the taskbar
+    /// (`SetParent`). Embedded children are painted in taskbar client
+    /// coordinates and never need z-order maintenance.
+    embedded: bool,
 }
 
 impl Default for Inst {
@@ -161,6 +225,7 @@ impl Default for Inst {
             top_align: 0,
             bottom_align: 0,
             visible: true,
+            embedded: false,
         }
     }
 }
@@ -248,6 +313,57 @@ pub fn is_visible(id: String) -> crate::Result<bool> {
     Ok(inst.visible)
 }
 
+// ---------------------------------------------------------------------------
+// Popup API (mirrors tauri-plugin-multiline-menubar)
+// ---------------------------------------------------------------------------
+
+/// Set which Tauri window is used as the popup. Call before the first open.
+pub fn set_popup_window(label: String) -> crate::Result<()> {
+    *POPUP_WINDOW.write().unwrap_or_else(|e| e.into_inner()) = Some(label.into());
+    Ok(())
+}
+
+/// Enable/disable automatically toggling the popup on left click.
+pub fn set_auto_popup(enabled: bool) -> crate::Result<()> {
+    *AUTO_POPUP.lock().unwrap_or_else(|e| e.into_inner()) = enabled;
+    Ok(())
+}
+
+pub fn open_popup(id: String) -> crate::Result<()> {
+    let app = APP.get().ok_or(crate::Error::UnsupportedPlatform)?;
+    open_popup_window(app, &id)
+}
+
+pub fn close_popup(id: String) -> crate::Result<()> {
+    let app = APP.get().ok_or(crate::Error::UnsupportedPlatform)?;
+    close_popup_window(app, &id)
+}
+
+pub fn toggle_popup(id: String) -> crate::Result<()> {
+    let app = APP.get().ok_or(crate::Error::UnsupportedPlatform)?;
+    toggle_popup_window(app, &id)
+}
+
+/// Attach (or detach, with `None`) the right-click context menu of an
+/// instance. Menu selections are emitted as `multiline-taskband://{id}//menu`
+/// with `{ id, itemId }`.
+pub fn set_menu(id: String, items: Option<Vec<MenuItemDescriptor>>) -> crate::Result<()> {
+    let app = APP.get().ok_or(crate::Error::UnsupportedPlatform)?;
+    install_menu_event_handler(app);
+    let mut menus = MENUS.lock().unwrap_or_else(|e| e.into_inner());
+    let map = menus.get_or_insert_with(HashMap::new);
+    match items {
+        None => {
+            map.remove(&id);
+        }
+        Some(items) => {
+            let menu = build_menu(app, &id, &items)?;
+            map.insert(id, Arc::new(menu));
+        }
+    }
+    Ok(())
+}
+
 fn start_if_needed() {
     if UI_TX.get().is_none() {
         if let Some(app) = APP.get() {
@@ -268,11 +384,13 @@ fn ui_thread(rx: Receiver<UiCommand>) {
     let _ = UI_THREAD.set(unsafe { GetCurrentThreadId() });
     register_class();
     install_taskbar_hook();
-    // Keep-alive timer: clicking the taskbar raises its z-order above
-    // non-activating overlays on Win11 (observed on build 26200), which
-    // visually hides them until the layered window is re-composited.
-    // Periodically re-asserting HWND_TOPMOST (only when actually needed,
-    // see keep_on_top) is cheap and immune to that.
+    // Keep-alive timer: for the (rare) fallback where a window could not be
+    // embedded into the taskbar, clicking the taskbar raises its z-order
+    // above non-activating top-level overlays on Win11 (observed on build
+    // 26200), visually hiding them until the layered window is re-composited.
+    // Periodically re-asserting HWND_TOPMOST (only when actually needed, see
+    // keep_on_top) is cheap and immune to that. Embedded children are skipped
+    // by keep_on_top, so this is a no-op for the normal path.
     const TIMER_KEEP_ON_TOP: usize = 1;
     unsafe {
         SetTimer(0, TIMER_KEEP_ON_TOP, 500, None);
@@ -302,7 +420,9 @@ fn ui_thread(rx: Receiver<UiCommand>) {
 
 /// Re-assert HWND_TOPMOST for overlay windows that ended up below the
 /// taskbar. Only windows actually stacked under the taskbar are touched, so
-/// this stays quiet when nothing happened.
+/// this stays quiet when nothing happened. Instances embedded as taskbar
+/// children (`embedded == true`) never need this — a child window is always
+/// painted above its parent, so the taskbar can never cover it.
 fn keep_on_top() {
     let taskbar = *TASKBAR_HWND.lock().unwrap_or_else(|e| e.into_inner());
     if taskbar == 0 {
@@ -311,7 +431,7 @@ fn keep_on_top() {
     if let Some(map) = INSTANCES.get() {
         let guard = map.lock().unwrap_or_else(|e| e.into_inner());
         for inst in guard.values() {
-            if !inst.visible {
+            if !inst.visible || inst.embedded {
                 continue;
             }
             let mut prev = unsafe { GetWindow(inst.hwnd, GW_HWNDPREV) };
@@ -490,22 +610,91 @@ fn register_class() {
     unsafe { RegisterClassExW(&wc) };
 }
 
+/// The window's class procedure.
+///
+/// The overlay is clickable: a left click toggles the instance's settings
+/// popup (when auto-popup is on), a right click is emitted as a `click` event
+/// for the host to handle. `WS_EX_NOACTIVATE` keeps the click from stealing
+/// focus from whatever the user was doing.
 extern "system" fn wnd_proc(
     hwnd: HWND,
     msg: u32,
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
+    if msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN {
+        handle_click(hwnd, msg, lparam);
+    }
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+/// Emit a `click` event for a mouse-down on one of our overlay windows and, on
+/// left click, toggle the instance's popup (mirrors the menubar plugin's
+/// left-click behaviour).
+fn handle_click(hwnd: HWND, msg: u32, lparam: LPARAM) {
+    let Some(id) = instance_id_for(hwnd) else {
+        return;
+    };
+    let Some(app) = APP.get() else {
+        return;
+    };
+
+    // Client coordinates -> screen coordinates (payload mirrors Tauri's own
+    // `TrayIconEvent::Click` shape).
+    let x = (lparam & 0xFFFF) as i16 as i32;
+    let y = ((lparam >> 16) & 0xFFFF) as i16 as i32;
+    let mut pt = POINT { x, y };
+    unsafe { ClientToScreen(hwnd, &mut pt) };
+
+    let (rx, ry, rw, rh) = instance_rect_screen(&id).unwrap_or((0, 0, 0, 0));
+    let button = if msg == WM_LBUTTONDOWN { "left" } else { "right" };
+    let _ = app.emit(
+        format!("multiline-taskband://{id}//click").as_str(),
+        serde_json::json!({
+            "id": id,
+            "position": { "x": pt.x, "y": pt.y },
+            "rect": { "x": rx, "y": ry, "width": rw, "height": rh },
+            "button": button,
+            "buttonState": "down",
+        }),
+    );
+
+    let auto = *AUTO_POPUP.lock().unwrap_or_else(|e| e.into_inner());
+    if auto && button == "left" {
+        let _ = toggle_popup_window(app, &id);
+    } else if button == "right" {
+        show_instance_menu(app, &id);
+    }
+}
+
+/// Find the instance id that owns `hwnd`.
+fn instance_id_for(hwnd: HWND) -> Option<String> {
+    let map = INSTANCES.get()?.lock().ok()?;
+    map.iter()
+        .find(|(_, i)| i.hwnd == hwnd)
+        .map(|(k, _)| k.clone())
+}
+
+/// Screen-coordinate rect of an instance (origin top-left).
+fn instance_rect_screen(id: &str) -> Option<(i32, i32, i32, i32)> {
+    let map = INSTANCES.get()?.lock().ok()?;
+    let inst = map.get(id)?;
+    Some((inst.x, inst.y, inst.w, inst.h))
 }
 
 fn create_window(id: &str) -> Option<HWND> {
     let name = to_wide(id);
     let hinst = unsafe { GetModuleHandleW(std::ptr::null()) };
+    // NOTE: no `WS_EX_TRANSPARENT` — the label area is intentionally clickable
+    // (left click opens the settings popup). Only the label's own rectangle is
+    // covered, so the rest of the taskbar keeps receiving clicks normally.
+    // WS_EX_TOPMOST is kept as a fallback: when SetParent embedding succeeds,
+    // the system clears it automatically (a child window cannot be topmost).
+    // When embedding fails, the window stays a top-level overlay and the
+    // keep_on_top timer re-asserts its z-order above the taskbar.
     let hwnd = unsafe {
         CreateWindowExW(
             WS_EX_LAYERED
-                | WS_EX_TRANSPARENT
                 | WS_EX_TOOLWINDOW
                 | WS_EX_NOACTIVATE
                 | WS_EX_TOPMOST,
@@ -560,6 +749,16 @@ fn relayout_all() {
     // Remember taskbar hwnd for the event hook.
     if taskbar.hwnd != 0 {
         *TASKBAR_HWND.lock().unwrap_or_else(|e| e.into_inner()) = taskbar.hwnd;
+    }
+
+    // Embed every instance as a child of the taskbar (mirrors TrafficMonitor:
+    // `SetParent(this->m_hWnd, GetParentHwnd())`). A child is always painted
+    // above its parent, so clicking the taskbar can never push the text below
+    // it — this is what removes the "flash" that top-level overlays exhibit.
+    // Re-runs re-embed windows after explorer restarts (old taskbar HWND is
+    // gone, `GetParent` no longer matches).
+    for inst in guard.values_mut() {
+        ensure_embedded(inst, taskbar.hwnd);
     }
 
     let horizontal = (taskbar.rect.right - taskbar.rect.left)
@@ -642,6 +841,32 @@ fn relayout_all() {
             }
         }
     }
+}
+
+/// Embed `inst`'s window as a child of the taskbar (TrafficMonitor's
+/// approach). Idempotent: if the window is already a child of `taskbar`,
+/// nothing happens. Returns via `inst.embedded` whether the window is now
+/// embedded. On failure (or no taskbar), the window stays a top-level
+/// `WS_EX_TOPMOST` overlay and `embedded` is cleared.
+///
+/// Note: `SetParent`'s return value cannot be used to detect success here —
+/// when the previous parent is the desktop it returns 0 even on success — and
+/// `GetParent` cannot either: it returns the *owner* for WS_POPUP windows
+/// (which is NULL for us) even after `SetParent` succeeds. The result is
+/// therefore verified with `GetAncestor(GA_PARENT)`, which always returns the
+/// real parent regardless of window styles.
+fn ensure_embedded(inst: &mut Inst, taskbar: HWND) {
+    if taskbar == 0 {
+        inst.embedded = false;
+        return;
+    }
+    let parent = unsafe { GetAncestor(inst.hwnd, GA_PARENT) };
+    if parent == taskbar {
+        inst.embedded = true;
+        return;
+    }
+    unsafe { SetParent(inst.hwnd, taskbar) };
+    inst.embedded = unsafe { GetAncestor(inst.hwnd, GA_PARENT) } == taskbar;
 }
 
 /// Win10/Win11 taskbar discovery + edge helpers.
@@ -897,8 +1122,13 @@ fn paint_inst(inst: &mut Inst) {
     let (hbmp, bits) = create_dib(hdc, w, h);
     let old = unsafe { SelectObject(hdc, hbmp) };
     let bits_u32 = bits as *mut u32;
+    // Background alpha is 1, not 0: UpdateLayeredWindow hit-tests layered
+    // windows per-pixel — a pixel with alpha 0 is transparent to the mouse
+    // (clicks fall through to the taskbar). alpha=1 is invisible to the eye
+    // but makes the whole label area clickable, so left-click can open the
+    // settings popup anywhere on the item (not just exactly on a glyph).
     for i in 0..(w * h) as usize {
-        unsafe { bits_u32.add(i).write(0) };
+        unsafe { bits_u32.add(i).write(0x0100_0000) };
     }
 
     // Top band.
@@ -935,9 +1165,33 @@ fn paint_inst(inst: &mut Inst) {
     let x = inst.x;
     let y = inst.y;
     let visible = inst.visible;
+    let embedded = inst.embedded;
+    // Embedded children are positioned in taskbar client coordinates;
+    // top-level fallback windows use screen coordinates. ScreenToClient is
+    // used instead of a raw offset subtraction to stay correct even if the
+    // taskbar ever gains a border.
+    let (mx, my) = if embedded {
+        let tb = *TASKBAR_HWND.lock().unwrap_or_else(|e| e.into_inner());
+        if tb != 0 {
+            let mut pt = POINT { x, y };
+            unsafe { ScreenToClient(tb, &mut pt) };
+            (pt.x, pt.y)
+        } else {
+            (x, y)
+        }
+    } else {
+        (x, y)
+    };
     unsafe {
-        MoveWindow(hwnd, x, y, w, h, FALSE);
-        let ppt_dst = POINT { x, y };
+        MoveWindow(hwnd, mx, my, w, h, FALSE);
+        // For embedded children, pass NULL so UpdateLayeredWindow keeps the
+        // position set by MoveWindow (a child's "screen position" semantics
+        // are ambiguous; the taskbar client coordinates are authoritative).
+        let ppt_dst = if embedded {
+            std::ptr::null()
+        } else {
+            &POINT { x, y }
+        };
         let psize = SIZE { cx: w, cy: h };
         let ppt_src = POINT { x: 0, y: 0 };
         let blend = BLENDFUNCTION {
@@ -946,7 +1200,7 @@ fn paint_inst(inst: &mut Inst) {
             SourceConstantAlpha: 255,
             AlphaFormat: AC_SRC_ALPHA as u8,
         };
-        let ulw = UpdateLayeredWindow(hwnd, 0, &ppt_dst, &psize, hdc, &ppt_src, 0, &blend, ULW_ALPHA);
+        let ulw = UpdateLayeredWindow(hwnd, 0, ppt_dst, &psize, hdc, &ppt_src, 0, &blend, ULW_ALPHA);
         let _ = ulw;
         SelectObject(hdc, old);
         DeleteObject(hbmp);
@@ -1001,6 +1255,313 @@ fn blit_line(
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Popup window helpers (mirrors tauri-plugin-multiline-menubar, adapted to
+// Windows screen coordinates: origin top-left, y grows downward)
+// ---------------------------------------------------------------------------
+
+/// Position a popup window next to the instance's label:
+///   * bottom taskbar  -> popup above the item, horizontally centred
+///   * top taskbar     -> popup below the item, horizontally centred
+///   * left taskbar    -> popup to the right of the item, vertically centred
+///   * right taskbar   -> popup to the left of the item, vertically centred
+///
+/// Clamped to the monitor that contains the item (multi-monitor aware).
+fn position_popup_under_item(win: &WebviewWindow, rect: (i32, i32, i32, i32)) {
+    let (rx, ry, rw, rh) = rect;
+    let outer = win.outer_size().unwrap_or_default();
+    let win_w = outer.width as i32;
+    let win_h = outer.height as i32;
+    if win_w <= 0 || win_h <= 0 {
+        return;
+    }
+
+    // Monitor containing the item (physical pixels).
+    let item_rect = RECT {
+        left: rx,
+        top: ry,
+        right: rx + rw,
+        bottom: ry + rh,
+    };
+    let monitor = unsafe { MonitorFromRect(&item_rect, MONITOR_DEFAULTTONEAREST) };
+    let mut mi: MONITORINFO = unsafe { std::mem::zeroed() };
+    mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+    let (m_left, m_top, m_right, m_bottom) =
+        if monitor != 0 && unsafe { GetMonitorInfoW(monitor, &mut mi) } != 0 {
+            (
+                mi.rcMonitor.left,
+                mi.rcMonitor.top,
+                mi.rcMonitor.right,
+                mi.rcMonitor.bottom,
+            )
+        } else {
+            (
+                0,
+                0,
+                unsafe { GetSystemMetrics(SM_CXSCREEN) },
+                unsafe { GetSystemMetrics(SM_CYSCREEN) },
+            )
+        };
+    let m_w = m_right - m_left;
+    let m_h = m_bottom - m_top;
+
+    // Which screen edge the taskbar hugs (compare the taskbar's rect against
+    // the item's monitor).
+    let tb = find_taskbar().rect;
+    let tb_w = tb.right - tb.left;
+    let tb_h = tb.bottom - tb.top;
+    let at_bottom = tb_h > 0 && tb_h < m_h && (tb.bottom - m_bottom).abs() < 16;
+    let at_top = tb_h > 0 && tb_h < m_h && (tb.top - m_top).abs() < 16;
+    let at_left = tb_w > 0 && tb_w < m_w && (tb.left - m_left).abs() < 16;
+
+    let mut x = rx + rw / 2 - win_w / 2;
+    let mut y;
+    if at_bottom {
+        // Popup above the item; flip below when there is no room.
+        y = ry - win_h;
+        if y < m_top {
+            y = ry + rh;
+        }
+    } else if at_top {
+        y = ry + rh;
+        if y + win_h > m_bottom {
+            y = ry - win_h;
+        }
+    } else if at_left {
+        x = rx + rw;
+        y = ry + rh / 2 - win_h / 2;
+    } else {
+        // Right-side taskbar (or unknown): popup to the left of the item.
+        x = rx - win_w;
+        y = ry + rh / 2 - win_h / 2;
+    }
+    x = x.clamp(m_left, (m_right - win_w).max(m_left));
+    y = y.clamp(m_top, (m_bottom - win_h).max(m_top));
+    let _ = win.set_position(PhysicalPosition::new(x as f64, y as f64));
+}
+
+fn popup_label() -> Arc<str> {
+    POPUP_WINDOW
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_else(|| Arc::from("popup"))
+}
+
+/// Show the popup window anchored next to the given instance and tell the
+/// popup window which instance opened it and what its current state is.
+fn open_popup_window(app: &tauri::AppHandle<Wry>, id: &str) -> crate::Result<()> {
+    let label = popup_label();
+    let Some(win) = app.get_webview_window(label.as_ref()) else {
+        return Ok(());
+    };
+    let rect = instance_rect_screen(id).unwrap_or((0, 0, 0, 0));
+    position_popup_under_item(&win, rect);
+    attach_auto_hide(app, &win, label.as_ref());
+    *POPUP_IGNORE_BLUR_UNTIL
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) =
+        Some(Instant::now() + Duration::from_millis(200));
+    let _ = win.show();
+    let _ = win.set_focus();
+    let _ = app.emit(
+        format!("multiline-taskband://{id}//popup-open").as_str(),
+        serde_json::json!({ "id": id, "window": label }),
+    );
+
+    // Send the instance's current state to the popup window so it can pre-fill
+    // its form with the values of whichever instance opened it.
+    if let Some(state) = instance_state_json(id) {
+        let _ = app.emit_to(&label, POPUP_OPEN_TARGET_EVENT, state);
+    }
+    *ACTIVE_POPUP_ID.lock().unwrap_or_else(|e| e.into_inner()) = Some(id.to_string());
+    Ok(())
+}
+
+/// Hide the popup window.
+fn close_popup_window(app: &tauri::AppHandle<Wry>, id: &str) -> crate::Result<()> {
+    let label = popup_label();
+    if let Some(win) = app.get_webview_window(label.as_ref()) {
+        let _ = win.hide();
+        let _ = app.emit(
+            format!("multiline-taskband://{id}//popup-close").as_str(),
+            serde_json::json!({ "id": id, "window": label }),
+        );
+    }
+    *ACTIVE_POPUP_ID.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    Ok(())
+}
+
+/// Toggle the popup window's visibility, anchored next to the given instance.
+fn toggle_popup_window(app: &tauri::AppHandle<Wry>, id: &str) -> crate::Result<()> {
+    let label = popup_label();
+    let Some(win) = app.get_webview_window(label.as_ref()) else {
+        return Ok(());
+    };
+    let active_is_this = ACTIVE_POPUP_ID
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_deref()
+        == Some(id);
+    if win.is_visible().unwrap_or(false) && active_is_this {
+        return close_popup_window(app, id);
+    }
+    open_popup_window(app, id)
+}
+
+/// Close the popup window when it loses focus (popup-app behaviour).
+/// Attached once to the popup window.
+fn attach_auto_hide(app: &tauri::AppHandle<Wry>, win: &WebviewWindow, label: &str) {
+    let mut attached = POPUP_HANDLER_ATTACHED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if *attached {
+        return;
+    }
+    *attached = true;
+
+    let app = app.clone();
+    let label = label.to_string();
+    // NOTE: tauri's `on_window_event` returns `()` and offers no API to remove
+    // the listener, but the listener lives in a window-scoped handler map that
+    // tauri drops when the window is destroyed, so the `app` clone captured
+    // here is released then too — nothing leaks for the app's lifetime.
+    win.on_window_event(move |event| {
+        if let WindowEvent::Focused(false) = event {
+            let now = Instant::now();
+            let ignore = POPUP_IGNORE_BLUR_UNTIL
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if let Some(until) = *ignore {
+                if now < until {
+                    return;
+                }
+            }
+            if let Some(w) = app.get_webview_window(&label) {
+                if w.is_visible().unwrap_or(false) {
+                    let _ = w.hide();
+                    let id = ACTIVE_POPUP_ID
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone()
+                        .unwrap_or_else(|| label.clone());
+                    let _ = app.emit(
+                        format!("multiline-taskband://{id}//popup-close").as_str(),
+                        serde_json::json!({ "id": id, "window": label }),
+                    );
+                    *ACTIVE_POPUP_ID.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                }
+            }
+        }
+    });
+}
+
+/// Snapshot of an instance's full style state, delivered to the popup window
+/// when it opens so the form can pre-fill (mirrors the menubar plugin's
+/// remembered per-instance state).
+fn instance_state_json(id: &str) -> Option<serde_json::Value> {
+    let map = INSTANCES.get()?.lock().ok()?;
+    let inst = map.get(id)?;
+    let top_color = serde_json::to_value(&inst.top_color).ok();
+    let bottom_color = serde_json::to_value(&inst.bottom_color).ok();
+    Some(serde_json::json!({
+        "id": id,
+        "top": inst.top,
+        "bottom": inst.bottom,
+        "topSize": inst.top_size,
+        "bottomSize": inst.bottom_size,
+        "layout": inst.layout,
+        "topColor": top_color,
+        "bottomColor": bottom_color,
+        "topBold": inst.top_bold,
+        "bottomBold": inst.bottom_bold,
+        "topAlign": inst.top_align,
+        "bottomAlign": inst.bottom_align,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Right-click context menu (tauri::menu, mirrored from menubar's set_menu)
+// ---------------------------------------------------------------------------
+
+/// Build a per-instance context menu. Menu-item ids are `{instance}::{action}`
+/// so the single global menu-event handler can route selections back to the
+/// right instance.
+fn build_menu(
+    app: &tauri::AppHandle<Wry>,
+    inst_id: &str,
+    items: &[MenuItemDescriptor],
+) -> crate::Result<TauriMenu<Wry>> {
+    let menu = TauriMenu::with_id(app, inst_id)?;
+    for item in items {
+        match item {
+            MenuItemDescriptor::Item { id, text, enabled } => {
+                let full_id = format!("{inst_id}{MENU_ID_SEPARATOR}{id}");
+                let mi = TauriMenuItem::with_id(app, &full_id, text, enabled.unwrap_or(true), None::<&str>)?;
+                menu.append(&mi)?;
+            }
+            MenuItemDescriptor::Separator => {
+                let sep = TauriPredefined::separator(app)?;
+                menu.append(&sep)?;
+            }
+        }
+    }
+    Ok(menu)
+}
+
+/// Install the global menu-event listener once. Selections from any instance's
+/// menu arrive here (tauri bridges muda events) and are re-emitted as
+/// `multiline-taskband://{instance}//menu` with `{ id, itemId }`.
+fn install_menu_event_handler(app: &tauri::AppHandle<Wry>) {
+    let mut attached = MENU_HANDLER_ATTACHED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if *attached {
+        return;
+    }
+    *attached = true;
+
+    let app = app.clone();
+    app.on_menu_event(move |app, event: MenuEvent| {
+        let id = event.id().0.clone();
+        let Some((inst, action)) = id.split_once(MENU_ID_SEPARATOR) else {
+            return; // not one of ours
+        };
+        let _ = app.emit(
+            format!("multiline-taskband://{inst}//menu").as_str(),
+            serde_json::json!({ "id": inst, "itemId": action }),
+        );
+    });
+}
+
+/// Pop the instance's context menu at the current cursor position (a
+/// right-click always happens with the cursor over the item). The owner window
+/// is the popup window when registered, otherwise any available webview
+/// window.
+///
+/// NOTE: we intentionally use `popup()` (cursor position) instead of
+/// `popup_at()` with an explicit position: muda's Windows implementation
+/// runs the given position through `ClientToScreen` (treating it as a client
+/// coordinate), so a screen coordinate would be double-translated and the
+/// menu would appear offset from the cursor.
+fn show_instance_menu(app: &tauri::AppHandle<Wry>, id: &str) {
+    let menus = MENUS.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(menu) = menus.as_ref().and_then(|m| m.get(id)) else {
+        return;
+    };
+    let label = popup_label();
+    let win = app
+        .get_webview_window(label.as_ref())
+        .or_else(|| app.webview_windows().into_values().next());
+    let Some(win) = win else {
+        return;
+    };
+    // `popup` needs a `Window`; `WebviewWindow` derefs to `Webview`, which
+    // exposes `window()`.
+    let window = win.as_ref().window();
+    let _ = menu.popup(window);
 }
 
 // ---------------------------------------------------------------------------

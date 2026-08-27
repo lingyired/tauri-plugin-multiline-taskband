@@ -15,6 +15,12 @@ Allows all multiline-taskband commands.
 - `allow-set-visible`
 - `allow-rect`
 - `allow-is-visible`
+- `allow-set-popup-window`
+- `allow-set-auto-popup`
+- `allow-open-popup`
+- `allow-close-popup`
+- `allow-toggle-popup`
+- `allow-set-menu`
 
 ## Permission Table
 
@@ -24,6 +30,32 @@ Allows all multiline-taskband commands.
 <th>Description</th>
 </tr>
 
+
+<tr>
+<td>
+
+`multiline-taskband:allow-close-popup`
+
+</td>
+<td>
+
+Enables the close_popup command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-close-popup`
+
+</td>
+<td>
+
+Denies the close_popup command without any pre-configured scope.
+
+</td>
+</tr>
 
 <tr>
 <td>
@@ -73,6 +105,32 @@ Enables the is_visible command without any pre-configured scope.
 <td>
 
 Denies the is_visible command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:allow-open-popup`
+
+</td>
+<td>
+
+Enables the open_popup command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-open-popup`
+
+</td>
+<td>
+
+Denies the open_popup command without any pre-configured scope.
 
 </td>
 </tr>
@@ -151,6 +209,32 @@ Enables the set_alignment command without any pre-configured scope.
 <td>
 
 Denies the set_alignment command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:allow-set-auto-popup`
+
+</td>
+<td>
+
+Enables the set_auto_popup command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-set-auto-popup`
+
+</td>
+<td>
+
+Denies the set_auto_popup command without any pre-configured scope.
 
 </td>
 </tr>
@@ -262,6 +346,58 @@ Denies the set_layout command without any pre-configured scope.
 <tr>
 <td>
 
+`multiline-taskband:allow-set-menu`
+
+</td>
+<td>
+
+Enables the set_menu command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-set-menu`
+
+</td>
+<td>
+
+Denies the set_menu command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:allow-set-popup-window`
+
+</td>
+<td>
+
+Enables the set_popup_window command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-set-popup-window`
+
+</td>
+<td>
+
+Denies the set_popup_window command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `multiline-taskband:allow-set-text`
 
 </td>
@@ -307,6 +443,32 @@ Enables the set_visible command without any pre-configured scope.
 <td>
 
 Denies the set_visible command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:allow-toggle-popup`
+
+</td>
+<td>
+
+Enables the toggle_popup command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-toggle-popup`
+
+</td>
+<td>
+
+Denies the toggle_popup command without any pre-configured scope.
 
 </td>
 </tr>

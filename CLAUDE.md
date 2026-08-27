@@ -14,7 +14,9 @@ Tauri v2 插件：在 **Windows 10 / 11 任务栏的左右两侧**渲染多组�
 采用 TrafficMonitor 的 **Win11 叠加式（overlay）** 做法，而不是硬改任务栏窗口树：
 
 - 每个实例是一个**独立的顶层 `WS_EX_LAYERED` 分层透明窗口**，`WS_POPUP` 无边框。
-- 叠加 `WS_EX_TRANSPARENT`（鼠标穿透，不抢任务栏点击）+ `WS_EX_TOOLWINDOW`（不进任务栏）+ `WS_EX_NOACTIVATE`（不抢焦点）。
+- 叠加 `WS_EX_TOOLWINDOW`（不进任务栏）+ `WS_EX_NOACTIVATE`（不抢焦点）+ `WS_EX_TOPMOST`（fallback 时保 z-order，嵌入成功后系统自动清除）。
+- **可点击**：左键 emit `click` 事件 + 自动弹设置 popup；右键 emit `click`（button="right"）。overlay 区域会拦截点击，其余任务栏不受影响。
+- **背景 alpha = 1 而非 0**：`UpdateLayeredWindow` 创建的分层窗口命中测试**按像素 alpha**：alpha=0 完全透明的像素鼠标穿透到下方任务栏（即使 SetParent 已嵌入）。文字区域 alpha 正常，但 PAD / 字形间隙 alpha=0 → 点击会穿透。**把背景 alpha 改成 1**（视觉上完全不可见，合成色与任务栏色差 < 0.5%），整个 label 矩形即可命中。这是这种 overlay 方案能"点击"的关键。
 - 左实例锚定在开始按钮右侧；右实例锚定在通知区（托盘）左侧；同侧多实例按创建顺序横向排开。
 - 通过 `FindWindowEx` 找 `Shell_TrayWnd`（主屏）/ `Shell_SecondaryTrayWnd`（副屏）、`TrayNotifyWnd`（通知区）、`Start`（开始按钮）定位。
 - 文字用 **GDI 白底黑字 DIB + 逐像素重着色** 实现任意颜色 + 抗锯齿（white-on-black 时 R=G=B=coverage，红通道即 alpha）。
@@ -56,15 +58,16 @@ Tauri v2 插件：在 **Windows 10 / 11 任务栏的左右两侧**渲染多组�
 
 ## 3. Windows 验证清单（续做项：Win10 + 剩余手动项）
 
-已完成（Win11 26200 / ARM64）：编译链全绿、任务栏渲染、多实例不重叠、即时刷新、点击任务栏不消失、left 贴最左、点击穿透、暗/亮模式 default 色。
+已完成（Win11 26200 / ARM64）：编译链全绿、任务栏渲染、多实例不重叠、即时刷新、点击任务栏不消失、left 贴最左、overlay 区域可点击（左键弹 popup / 右键发 click 事件）、暗/亮模式 default 色。
 
 待完成：
-1. **Win10 实机验证**（需 Win10 机器/VM）——主要回归渲染、定位、点击穿透；Win10 任务栏类名（`Shell_TrayWnd`/`TrayNotifyWnd`/`Start`）更稳定。
+1. **Win10 实机验证**（需 Win10 机器/VM）——主要回归渲染、定位、点击行为（Win10 上 `Shell_TrayWnd`/`TrayNotifyWnd`/`Start` 类名更稳定，但 Win11 的命中测试行为可能与 Win10 不同）。
 2. **任务栏移动/缩放自动重排**（hook 已实现，手动验证：拖任务栏到顶部/切分辨率）。
 3. **explorer 重启**（`taskkill /f /im explorer.exe && start explorer`）不留孤儿窗口。
 4. **`desktop.rs` transmute_copy**：已运行验证无崩溃（决策：能跑就保留）。若后续接入非 Wry 宿主再改 `AppHandle<Wry>` 限定。
 5. **DPI 100%/150%/200%** 多档验证（当前 `GetDpiForSystem`，若副屏/多 DPI 错位改 `GetDpiForWindow(taskbar.hwnd)`）。
 6. **多显示器**：副屏任务栏（`Shell_SecondaryTrayWnd`）未处理，主屏够用即跳过。
+7. **Popup 交互链路** ✅ **已在 Win11 26200 / ARM64（200% DPI）实机验证**：点击 overlay → popup 打开定位到 item 正上方（多实例各自锚定 + monitor clamp）、实例状态下发与预填（header、top/bottom 文字等）、点外部 → 失焦关闭。验证脚本：`C:\Users\lingsmbp\tmp-demo-cli\verify_popup.py`（构造截图存 `popup_top.png` / `popup_right3.png`）。
 
 ---
 
@@ -113,7 +116,7 @@ pnpm build        # rollup 产出 dist-js/，demo 前端 import 用
 
 ## 6. API 速查（已落地命令）
 
-`create(id, side)` · `remove(id)` · `set_text(id, top, bottom)` · `set_font_sizes(id, top, bottom)` · `set_layout(id, layout)` · `set_colors(id, top, bottom)` · `set_bold(id, top, bottom)` · `set_alignment(id, top, bottom)` · `set_visible(id, visible)` · `rect(id)` · `is_visible(id)`
+`create(id, side)` · `remove(id)` · `set_text(id, top, bottom)` · `set_font_sizes(id, top, bottom)` · `set_layout(id, layout)` · `set_colors(id, top, bottom)` · `set_bold(id, top, bottom)` · `set_alignment(id, top, bottom)` · `set_visible(id, visible)` · `rect(id)` · `is_visible(id)` · `set_popup_window(label)` · `set_auto_popup(enabled)` · `open_popup(id)` · `close_popup(id)` · `toggle_popup(id)`
 
 - `Side`：`"left"` / `"right"`（默认 right）。
 - `ColorStyle`：`{ "type": "default" }` 跟随系统明暗；`{ "type": "solid", "value": "#FF4F44" }` 固定色。
@@ -121,6 +124,8 @@ pnpm build        # rollup 产出 dist-js/，demo 前端 import 用
 - `alignment` 每行独立：`0`=左 / `1`=中 / `2`=右。
 - Rust 宿主：`app.multiline_taskband()`（扩展 trait `MultilineTaskbandExt`）。
 - 实例就绪后 native 层 `emit("multiline-taskband://{id}//ready", {id})`。
+- 点击事件：native 层在 `WM_LBUTTONDOWN`/`WM_RBUTTONDOWN` 时 `emit("multiline-taskband://{id}//click", {id, position, rect, button, buttonState:"down"})`；左键且 `auto_popup` 开启时自动 `toggle_popup`。
+- Popup 机制（对齐 menubar）：宿主在 `tauri.conf.json` 声明一个 `visible:false` 的 Tauri 窗口（label 默认 `"popup"`，用 `set_popup_window` 覆盖），插件在点击时 `get_webview_window` 定位（底部任务栏→item 上方居中，顶部→下方，纵向→外侧，含多显示器 clamp）、`show`、`set_focus`，并把该实例当前全部样式经 `emit_to(popup, "multiline-taskband://popup//open")` 下发；失焦自动 `hide`。`popup-open`/`popup-close` 按实例 id 发到 `multiline-taskband://{id}//popup-open|close`。
 
 ---
 
@@ -130,7 +135,7 @@ pnpm build        # rollup 产出 dist-js/，demo 前端 import 用
 |---|---|---|
 | 窗口归属 | `SetParent` 挂成任务栏子窗口 | 独立顶层窗口，仅定位贴合 |
 | 左/右手法 | Win10 挤开任务列表；Win11 叠加 | 统一叠加（两端通用） |
-| 交互 | 可点击、可拖 | v1 纯展示、点击穿透 |
+| 交互 | 可点击、可拖 | v2 可点击（左键弹 popup，右键发 click 事件）；背景 alpha=1 trick 保命中 |
 | 渲染 | D2D / GDI 双后端 | 仅 GDI + 分层窗口 |
 | 多实例 | 单一 | N 实例，按 id/side 多分组 |
 | 平台 | Windows 专用 | Tauri 插件，macOS 另由 multiline-menubar 承担 |
@@ -140,6 +145,6 @@ pnpm build        # rollup 产出 dist-js/，demo 前端 import 用
 ## 8. 已知限制（先对齐预期）
 
 - 仅支持 Windows 10 / 11；无 macOS / Linux / mobile 支持。副屏任务栏未处理（见 §3.5）。
-- v1 不交互（点击穿透）；popup 交互留作下一阶段。
+- overlay 窗口区域**可点击**（左键弹 popup / 右键发 `click` 事件），会拦截该小块区域对任务栏的点击；其余任务栏区域不受影响。
 - 多实例同侧空间有限，需调用方控制数量。
-- 全部 Windows 代码**未经编译/运行**，§3 的验证项通过前不要用于生产。
+- Popup 交互已实现但**仅经 cargo 编译验证**，尚未在 Win11 实机跑通（点击→弹窗→改样式→失焦关闭的完整链路），见 §3 验证清单。
