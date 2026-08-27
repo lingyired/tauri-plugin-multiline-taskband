@@ -23,6 +23,11 @@
 //!     run on arbitrary async threads.
 //!   * A `WinEventHook` on the taskbar's `EVENT_OBJECT_LOCATIONCHANGE`
 //!     re-lays-out every instance when the taskbar moves/resizes.
+//!   * A second hook on `EVENT_OBJECT_CREATE..EVENT_OBJECT_DESTROY` recovers
+//!     from explorer.exe restarts: the taskbar window tree is rebuilt, so the
+//!     hook triggers a relayout which re-finds `Shell_TrayWnd` and re-embeds
+//!     every instance (`ensure_embedded`). This mirrors TrafficMonitor's
+//!     `TaskbarCreated` handling (destroy + recreate the embedded window).
 //!   * If embedding fails (e.g. explorer is in an odd state), instances fall
 //!     back to top-level `WS_EX_TOPMOST` windows; the keep-on-top timer then
 //!     re-asserts their z-order above the taskbar (pre-Win11-embedding
@@ -423,6 +428,11 @@ fn ui_thread(rx: Receiver<UiCommand>) {
 /// this stays quiet when nothing happened. Instances embedded as taskbar
 /// children (`embedded == true`) never need this — a child window is always
 /// painted above its parent, so the taskbar can never cover it.
+///
+/// Also acts as a safety net for explorer restarts: if an instance ended up
+/// off the taskbar's horizontal range (e.g. `TrayNotifyWnd` reported a bogus
+/// rect while the tray was rebuilding), a relayout is triggered to recompute
+/// positions — by then the taskbar is fully built and the tray edge is valid.
 fn keep_on_top() {
     let taskbar = *TASKBAR_HWND.lock().unwrap_or_else(|e| e.into_inner());
     if taskbar == 0 {
@@ -430,8 +440,54 @@ fn keep_on_top() {
     }
     if let Some(map) = INSTANCES.get() {
         let guard = map.lock().unwrap_or_else(|e| e.into_inner());
+        let mut tb_rect = rect_zero();
+        if unsafe { GetWindowRect(taskbar, &mut tb_rect) } == 0 {
+            return;
+        }
+        // Right-side instances must sit left of the tray; if the tray is
+        // present and any right instance overlaps it, its position was
+        // computed before the tray was ready (fallback edge). Recompute now
+        // that the tray is stable — this is the safety net that catches a
+        // stale `TrayNotifyWnd` rect during explorer restarts.
+        let notify = find_window_ex(taskbar, "TrayNotifyWnd");
+        if notify != 0 {
+            let mut nr = rect_zero();
+            if unsafe { GetWindowRect(notify, &mut nr) } != 0
+                && nr.left > tb_rect.left
+                && nr.left < tb_rect.right
+            {
+                for inst in guard.values() {
+                    if inst.side != Side::Right || !inst.visible {
+                        continue;
+                    }
+                    let mut r = rect_zero();
+                    if unsafe { GetWindowRect(inst.hwnd, &mut r) } != 0 && r.right > nr.left {
+                        drop(guard);
+                        relayout_all();
+                        return;
+                    }
+                }
+            }
+        }
         for inst in guard.values() {
-            if !inst.visible || inst.embedded {
+            if !inst.visible {
+                continue;
+            }
+            // Off-taskbar check (horizontal only — left/right edges are the
+            // only ones derived from an external window rect): if an instance
+            // sits outside the taskbar's x-range, something computed a bad
+            // position (stale tray rect during an explorer restart). Force a
+            // relayout, which will recompute against the now-stable taskbar.
+            let mut r = rect_zero();
+            if unsafe { GetWindowRect(inst.hwnd, &mut r) } == 0 {
+                continue;
+            }
+            if r.left < tb_rect.left - 2 || r.right > tb_rect.right + 2 {
+                drop(guard);
+                relayout_all();
+                return;
+            }
+            if inst.embedded {
                 continue;
             }
             let mut prev = unsafe { GetWindow(inst.hwnd, GW_HWNDPREV) };
@@ -744,6 +800,34 @@ fn relayout_all() {
         return;
     }
 
+    // Explorer restart recovery: when the taskbar window tree is torn down
+    // (`Shell_TrayWnd` destroyed), our SetParent-embedded overlay windows are
+    // destroyed along with it — a parent destroys its children on `DestroyWindow`
+    // regardless of their style. The WinEvent hook on `EVENT_OBJECT_CREATE`
+    // triggers this relayout, which must *recreate* any window whose HWND is
+    // gone before re-embedding it into the new taskbar — mirroring
+    // TrafficMonitor's destroy+recreate on the `TaskbarCreated` broadcast.
+    for (id, inst) in guard.iter_mut() {
+        if !window_alive(inst) {
+            if let Some(hwnd) = create_window(id) {
+                inst.hwnd = hwnd;
+                inst.embedded = false;
+                if inst.visible {
+                    unsafe { ShowWindow(hwnd, SW_SHOW) };
+                }
+            }
+        }
+    }
+
+    // Self-heal visibility: while the taskbar rebuilds its child tree it can
+    // hide our embedded windows; a surviving window whose `visible` flag says
+    // it should be shown gets re-shown on every relayout.
+    for inst in guard.values() {
+        if inst.visible && unsafe { IsWindowVisible(inst.hwnd) } == 0 {
+            unsafe { ShowWindow(inst.hwnd, SW_SHOW) };
+        }
+    }
+
     let taskbar = find_taskbar();
 
     // Remember taskbar hwnd for the event hook.
@@ -843,6 +927,22 @@ fn relayout_all() {
     }
 }
 
+/// Whether `inst.hwnd` still refers to one of our overlay windows. `IsWindow`
+/// alone is not enough: after the taskbar tears down and recreates windows,
+/// the kernel may reuse an old HWND value for a *different* window. Checking
+/// the class name pins it down.
+fn window_alive(inst: &Inst) -> bool {
+    if unsafe { IsWindow(inst.hwnd) } == 0 {
+        return false;
+    }
+    let mut buf = [0u16; 64];
+    let n = unsafe { GetClassNameW(inst.hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+    if n <= 0 {
+        return false;
+    }
+    String::from_utf16_lossy(&buf[..n as usize]) == "MultilineTaskbandOverlay"
+}
+
 /// Embed `inst`'s window as a child of the taskbar (TrafficMonitor's
 /// approach). Idempotent: if the window is already a child of `taskbar`,
 /// nothing happens. Returns via `inst.embedded` whether the window is now
@@ -883,7 +983,14 @@ impl Taskbar {
         if notify != 0 {
             let mut r = rect_zero();
             if unsafe { GetWindowRect(notify, &mut r) } != 0 {
-                return r.left - 2;
+                // Guard against a stale / not-yet-positioned tray window:
+                // while explorer restarts, `TrayNotifyWnd` can briefly report
+                // a (0,0,..) rect, which would push every right-side instance
+                // off-screen. Only trust the tray edge when it actually sits
+                // inside the taskbar.
+                if r.left > self.rect.left && r.left < self.rect.right {
+                    return r.left - 2;
+                }
             }
         }
         self.rect.right - unsafe { MulDiv(88, dpi(), 96) }
@@ -1570,6 +1677,7 @@ fn show_instance_menu(app: &tauri::AppHandle<Wry>, id: &str) {
 
 fn install_taskbar_hook() {
     unsafe {
+        // Taskbar move/resize → re-layout every instance.
         SetWinEventHook(
             EVENT_OBJECT_LOCATIONCHANGE,
             EVENT_OBJECT_LOCATIONCHANGE,
@@ -1579,7 +1687,49 @@ fn install_taskbar_hook() {
             0,
             WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
         );
+        // Taskbar destroy/create → explorer.exe restart. The taskbar window
+        // tree is torn down and rebuilt, so our embedded children must be
+        // re-embedded into the new `Shell_TrayWnd` (same approach as
+        // TrafficMonitor's `TaskbarCreated` handling, but via WinEvents since
+        // this plugin has no top-level window to receive the broadcast).
+        // Registered as a range so both `EVENT_OBJECT_DESTROY` (0x8001) and
+        // `EVENT_OBJECT_CREATE` (0x8000) reach the same callback.
+        SetWinEventHook(
+            EVENT_OBJECT_CREATE,
+            EVENT_OBJECT_DESTROY,
+            0,
+            Some(win_event_proc),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+        );
     }
+}
+
+/// Whether `hwnd` is a (primary or secondary) taskbar window. Class-name
+/// based so it stays correct after explorer restarts, when the cached
+/// `TASKBAR_HWND` points at a destroyed window.
+fn is_taskbar_class(hwnd: HWND) -> bool {
+    let mut buf = [0u16; 64];
+    let n = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+    if n <= 0 {
+        return false;
+    }
+    let name = String::from_utf16_lossy(&buf[..n as usize]);
+    name == "Shell_TrayWnd" || name == "Shell_SecondaryTrayWnd"
+}
+
+/// Whether `hwnd` is the taskbar's notification/tray area (`TrayNotifyWnd`).
+/// Its creation is the signal that the right-side edge has stabilised: right
+/// instances anchored to a bogus fallback edge (tray not yet created) must be
+/// recomputed once the tray window actually exists.
+fn is_tray_class(hwnd: HWND) -> bool {
+    let mut buf = [0u16; 64];
+    let n = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+    if n <= 0 {
+        return false;
+    }
+    String::from_utf16_lossy(&buf[..n as usize]) == "TrayNotifyWnd"
 }
 
 extern "system" fn win_event_proc(
@@ -1591,6 +1741,19 @@ extern "system" fn win_event_proc(
     _thread: u32,
     _time: u32,
 ) {
+    if event == EVENT_OBJECT_CREATE || event == EVENT_OBJECT_DESTROY {
+        // Explorer restart: relayout re-finds the taskbar (new window) and
+        // re-embeds every instance via `ensure_embedded`. `hwnd==0` here
+        // means a desktop-wide event, which never carries a taskbar class;
+        // the class check below already excludes it. `TrayNotifyWnd`
+        // creation is included: right-side instances anchored to the fallback
+        // edge (tray not yet present) get recomputed the moment the tray
+        // window exists, before the 500 ms keep_on_top safety net fires.
+        if hwnd != 0 && (is_taskbar_class(hwnd) || is_tray_class(hwnd)) {
+            post(UiCommand::Relayout);
+        }
+        return;
+    }
     if event != EVENT_OBJECT_LOCATIONCHANGE {
         return;
     }
