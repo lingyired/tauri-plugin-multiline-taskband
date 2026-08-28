@@ -74,14 +74,57 @@ impl<R: Runtime> MultilineTaskband<R> {
         }
     }
 
-    pub fn set_layout(&self, id: String, layout: i32) -> crate::Result<()> {
+    pub fn set_padding(&self, id: String, left: i32, right: i32) -> crate::Result<()> {
         #[cfg(target_os = "windows")]
         {
-            native::set_layout(id, layout)
+            native::set_padding(id, left, right)
         }
         #[cfg(not(target_os = "windows"))]
         {
-            let _ = (id, layout);
+            let _ = (id, left, right);
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
+    /// Move an existing instance to the other side of the taskbar (left/right)
+    /// without recreating it. Creation order is preserved, so within the new
+    /// side the instance keeps its relative position.
+    pub fn set_side(&self, id: String, side: Side) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_side(id, side)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (id, side);
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
+    /// Re-order an instance within its side (ascending `order`). See
+    /// [`SetOrderRequest`].
+    pub fn set_order(&self, id: String, order: u64) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_order(id, order)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (id, order);
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
+    /// Set the global margin (physical px) between adjacent instances. See
+    /// [`SetMarginRequest`].
+    pub fn set_margin(&self, margin: i32) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_margin(margin)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = margin;
             Err(crate::Error::UnsupportedPlatform)
         }
     }

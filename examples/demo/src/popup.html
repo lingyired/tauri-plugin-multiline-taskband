@@ -161,27 +161,45 @@
       </fieldset>
 
       <fieldset>
-        <legend>字号与布局</legend>
-        <div class="field">
-          <label for="popup-layout">布局</label>
-          <select id="popup-layout">
-            <option value="0">0 emphasis-bottom（上小下大）</option>
-            <option value="1">1 emphasis-top（上大下小）</option>
-            <option value="2">2 equal（等大居中）</option>
-          </select>
-        </div>
+        <legend>字号与边距</legend>
         <div class="row">
           <div class="field" style="flex: 1">
             <label for="popup-top-size">上行字号 (pt)</label>
-            <input type="number" id="popup-top-size" min="6" max="24" step="0.5" value="9" />
+            <input type="number" id="popup-top-size" min="6" max="24" step="0.5" value="11" />
           </div>
           <div class="field" style="flex: 1">
             <label for="popup-bottom-size">下行字号 (pt)</label>
-            <input type="number" id="popup-bottom-size" min="6" max="24" step="0.5" value="12" />
+            <input type="number" id="popup-bottom-size" min="6" max="24" step="0.5" value="11" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field" style="flex: 1">
+            <label for="popup-pad-left">左边距 (px)</label>
+            <input type="number" id="popup-pad-left" min="0" max="24" step="1" value="4" />
+          </div>
+          <div class="field" style="flex: 1">
+            <label for="popup-pad-right">右边距 (px)</label>
+            <input type="number" id="popup-pad-right" min="0" max="24" step="1" value="4" />
           </div>
         </div>
         <div class="row">
           <button id="popup-sizes">应用字号</button>
+          <button id="popup-padding" class="secondary">应用边距</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>位置</legend>
+        <div class="field">
+          <label for="popup-side">靠任务栏哪一侧</label>
+          <select id="popup-side">
+            <option value="left">left（贴开始按钮/最左）</option>
+            <option value="right" selected>right（贴通知区/托盘）</option>
+          </select>
+        </div>
+        <div class="row">
+          <button id="popup-side-apply">应用位置</button>
+          <button id="popup-side-reset" class="secondary">重置为 right</button>
         </div>
       </fieldset>
 

@@ -3,7 +3,7 @@ const COMMANDS: &[&str] = &[
     "remove",
     "set_text",
     "set_font_sizes",
-    "set_layout",
+    "set_padding",
     "set_colors",
     "set_bold",
     "set_alignment",

@@ -42,11 +42,36 @@ pub(crate) async fn set_font_sizes<R: Runtime>(
 }
 
 #[command]
-pub(crate) async fn set_layout<R: Runtime>(
+pub(crate) async fn set_padding<R: Runtime>(
     app: AppHandle<R>,
-    payload: LayoutRequest,
+    payload: SetPaddingRequest,
 ) -> crate::Result<()> {
-    app.multiline_taskband().set_layout(payload.id, payload.layout)
+    app.multiline_taskband()
+        .set_padding(payload.id, payload.left, payload.right)
+}
+
+#[command]
+pub(crate) async fn set_side<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetSideRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband().set_side(payload.id, payload.side)
+}
+
+#[command]
+pub(crate) async fn set_order<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetOrderRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband().set_order(payload.id, payload.order)
+}
+
+#[command]
+pub(crate) async fn set_margin<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetMarginRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband().set_margin(payload.margin)
 }
 
 #[command]

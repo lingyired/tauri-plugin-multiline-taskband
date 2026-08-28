@@ -11,9 +11,10 @@ window.addEventListener("DOMContentLoaded", () => {
   const headerEl = document.querySelector("#popup-header");
   const topEl = document.querySelector("#popup-top");
   const bottomEl = document.querySelector("#popup-bottom");
-  const layoutEl = document.querySelector("#popup-layout");
   const topSizeEl = document.querySelector("#popup-top-size");
   const bottomSizeEl = document.querySelector("#popup-bottom-size");
+  const padLeftEl = document.querySelector("#popup-pad-left");
+  const padRightEl = document.querySelector("#popup-pad-right");
   const topColorTypeEl = document.querySelector("#popup-top-color-type");
   const topColorEl = document.querySelector("#popup-top-color");
   const topHexEl = document.querySelector("#popup-top-hex");
@@ -24,6 +25,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const bottomBoldEl = document.querySelector("#popup-bottom-bold");
   const topAlignEl = document.querySelector("#popup-top-align");
   const bottomAlignEl = document.querySelector("#popup-bottom-align");
+  const sideEl = document.querySelector("#popup-side");
 
   // Color picker auto-fills the hex field; the hex field is what gets applied.
   topColorEl.addEventListener("input", () => {
@@ -52,13 +54,15 @@ window.addEventListener("DOMContentLoaded", () => {
       bottom,
       topSize,
       bottomSize,
-      layout,
+      leftPadding,
+      rightPadding,
       topColor,
       bottomColor,
       topBold,
       bottomBold,
       topAlign,
       bottomAlign,
+      side,
     } = event.payload;
     currentInstanceId = id;
     if (headerEl) headerEl.textContent = `实例设置 — ${id}`;
@@ -67,7 +71,10 @@ window.addEventListener("DOMContentLoaded", () => {
     if (topSize !== undefined && topSize !== null) topSizeEl.value = topSize;
     if (bottomSize !== undefined && bottomSize !== null)
       bottomSizeEl.value = bottomSize;
-    if (layout !== undefined && layout !== null) layoutEl.value = String(layout);
+    if (leftPadding !== undefined && leftPadding !== null)
+      padLeftEl.value = leftPadding;
+    if (rightPadding !== undefined && rightPadding !== null)
+      padRightEl.value = rightPadding;
     if (topBold !== undefined && topBold !== null) topBoldEl.checked = !!topBold;
     if (bottomBold !== undefined && bottomBold !== null)
       bottomBoldEl.checked = !!bottomBold;
@@ -75,6 +82,7 @@ window.addEventListener("DOMContentLoaded", () => {
       topAlignEl.value = String(topAlign);
     if (bottomAlign !== undefined && bottomAlign !== null)
       bottomAlignEl.value = String(bottomAlign);
+    if (side === "left" || side === "right") sideEl.value = side;
 
     const applyColor = (color, typeEl, colorEl, hexEl) => {
       if (color && color.type === "solid" && /^#[0-9a-fA-F]{6}$/.test(color.value)) {
@@ -117,22 +125,26 @@ window.addEventListener("DOMContentLoaded", () => {
     }).catch((err) => console.error("Failed to reset text:", err));
   });
 
-  // --- sizes & layout ---
+  // --- sizes & padding ---
   document.querySelector("#popup-sizes").addEventListener("click", () => {
     if (!requireInstance()) return;
     invoke("plugin:multiline-taskband|set_font_sizes", {
       payload: {
         id: currentInstanceId,
-        top: Number(topSizeEl.value) || 9,
-        bottom: Number(bottomSizeEl.value) || 12,
+        top: Number(topSizeEl.value) || 11,
+        bottom: Number(bottomSizeEl.value) || 11,
       },
     }).catch((err) => console.error("Failed to set font sizes:", err));
   });
-  layoutEl.addEventListener("change", () => {
+  document.querySelector("#popup-padding").addEventListener("click", () => {
     if (!requireInstance()) return;
-    invoke("plugin:multiline-taskband|set_layout", {
-      payload: { id: currentInstanceId, layout: Number(layoutEl.value) },
-    }).catch((err) => console.error("Failed to set layout:", err));
+    invoke("plugin:multiline-taskband|set_padding", {
+      payload: {
+        id: currentInstanceId,
+        left: parseInt(padLeftEl.value, 10) || 4,
+        right: parseInt(padRightEl.value, 10) || 4,
+      },
+    }).catch((err) => console.error("Failed to set padding:", err));
   });
 
   // --- colors ---
@@ -191,6 +203,21 @@ window.addEventListener("DOMContentLoaded", () => {
         bottom: parseInt(bottomAlignEl.value, 10) || 0,
       },
     }).catch((err) => console.error("Failed to set alignment:", err));
+  });
+
+  // --- side (left/right) ---
+  document.querySelector("#popup-side-apply").addEventListener("click", () => {
+    if (!requireInstance()) return;
+    invoke("plugin:multiline-taskband|set_side", {
+      payload: { id: currentInstanceId, side: sideEl.value },
+    }).catch((err) => console.error("Failed to set side:", err));
+  });
+  document.querySelector("#popup-side-reset").addEventListener("click", () => {
+    if (!requireInstance()) return;
+    sideEl.value = "right";
+    invoke("plugin:multiline-taskband|set_side", {
+      payload: { id: currentInstanceId, side: "right" },
+    }).catch((err) => console.error("Failed to set side:", err));
   });
 
   // --- close ---

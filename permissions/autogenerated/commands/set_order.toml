@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-order"
+description = "Enables the set_order command without any pre-configured scope."
+commands.allow = ["set_order"]
+
+[[permission]]
+identifier = "deny-set-order"
+description = "Denies the set_order command without any pre-configured scope."
+commands.deny = ["set_order"]

@@ -105,7 +105,7 @@ pnpm build        # rollup 产出 dist-js/，demo 前端 import 用
 3. **`src-tauri/capabilities/default.json`**：加 `"multiline-taskband:default"`。
 4. **前端用 vanilla HTML/JS**（不引框架，与 menubar demo 一致）：
    - 控制面板：创建/删除实例（可指定 `id`、`side`=left/right、初始 `top`/`bottom` 文字）；列出所有实例。
-   - 每个实例提供全套调节：`setText` / `setFontSizes` / `setLayout`（0/1/2）/ `setColors`（`default` 或 `#rrggbb`，可做红涨绿跌示例）/ `setBold` / `setAlignment` / `setVisible` / `rect` / `isVisible`。
+   - 每个实例提供全套调节：`setText` / `setFontSizes` / `setPadding`（左右边距，物理 px）/ `setColors`（`default` 或 `#rrggbb`，可做红涨绿跌示例）/ `setBold` / `setAlignment` / `setVisible` / `rect` / `isVisible`。
    - 用 `onReady(id)` 监听实例就绪后同步 UI 状态。
 5. **运行**：`cd examples/demo && pnpm install && pnpm tauri dev`（需在 Windows 上跑）。
 6. **demo 验收标准**：左右各建 2–3 个实例且不重叠；改文字/颜色/字号即时生效；任务栏移动/缩放自动重排；点击文字区域不挡任务栏点击。
@@ -116,11 +116,15 @@ pnpm build        # rollup 产出 dist-js/，demo 前端 import 用
 
 ## 6. API 速查（已落地命令）
 
-`create(id, side)` · `remove(id)` · `set_text(id, top, bottom)` · `set_font_sizes(id, top, bottom)` · `set_layout(id, layout)` · `set_colors(id, top, bottom)` · `set_bold(id, top, bottom)` · `set_alignment(id, top, bottom)` · `set_visible(id, visible)` · `rect(id)` · `is_visible(id)` · `set_popup_window(label)` · `set_auto_popup(enabled)` · `open_popup(id)` · `close_popup(id)` · `toggle_popup(id)`
+`create(id, side)` · `remove(id)` · `set_text(id, top, bottom)` · `set_font_sizes(id, top, bottom)` · `set_padding(id, left, right)` · `set_side(id, side)` · `set_order(id, order)` · `set_margin(margin)` · `set_colors(id, top, bottom)` · `set_bold(id, top, bottom)` · `set_alignment(id, top, bottom)` · `set_visible(id, visible)` · `rect(id)` · `is_visible(id)` · `set_popup_window(label)` · `set_auto_popup(enabled)` · `open_popup(id)` · `close_popup(id)` · `toggle_popup(id)`
+
+- `Side`：`"left"` / `"right"`（默认 right）。`set_side` 可把已存在实例动态挪到另一侧（不重建，保留 order）。
+- `set_order`：同侧实例按 `order` 升序排开（默认=创建顺序）；交换相邻 order 值即可实现上移/下移。
+- `set_margin`：全局实例间距（物理 px，默认 4）；行内两行文字间距是固定内部样式（`LINE_GAP`），不受影响。
 
 - `Side`：`"left"` / `"right"`（默认 right）。
 - `ColorStyle`：`{ "type": "default" }` 跟随系统明暗；`{ "type": "solid", "value": "#FF4F44" }` 固定色。
-- `layout`：`0`=emphasis-bottom（上小下大，默认）/`1`=emphasis-top/`2`=equal。
+- 上下行视觉只由 `setFontSizes`（pt，默认 11/11）控制，无布局预设；`setPadding` 设每实例左右边距（物理 px，默认 4/4）。
 - `alignment` 每行独立：`0`=左 / `1`=中 / `2`=右。
 - Rust 宿主：`app.multiline_taskband()`（扩展 trait `MultilineTaskbandExt`）。
 - 实例就绪后 native 层 `emit("multiline-taskband://{id}//ready", {id})`。

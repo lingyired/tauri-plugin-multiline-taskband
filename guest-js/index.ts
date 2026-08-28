@@ -31,15 +31,47 @@ export interface FontSizesOptions {
   bottom: number
 }
 
-export interface LayoutOptions {
+/**
+ * Per-instance horizontal padding, in physical pixels. The gap between the
+ * left/right edge of the instance window and its text; `left` and `right`
+ * can differ. Defaults to `4`.
+ */
+export interface SetPaddingOptions {
   id: string
-  /**
-   * Vertical layout:
-   * - `0` (emphasis-bottom, default): small label on top (light weight), large value below (regular weight).
-   * - `1` (emphasis-top): the vertical mirror — large value on top, small label below.
-   * - `2` (equal): both lines share one size, vertically centered & symmetric.
-   */
-  layout: number
+  left: number
+  right: number
+}
+
+/**
+ * Move an existing instance to the other side of the taskbar (left/right)
+ * without recreating it. Its creation order is preserved, so within the new
+ * side it keeps its relative position.
+ */
+export interface SetSideOptions {
+  id: string
+  /** Edge to pin to: `'left'` or `'right'`. */
+  side: Side
+}
+
+/**
+ * Re-order an instance within its side. Instances on the same side are laid
+ * out by ascending `order` (creation order by default); use the neighbours'
+ * current values (e.g. swap with an adjacent instance) to move it up/down.
+ */
+export interface SetOrderOptions {
+  id: string
+  /** Sort key within the instance's side. */
+  order: number
+}
+
+/**
+ * Set the global margin between adjacent instances, in physical pixels.
+ * The gap between the two text lines *inside* an instance is a fixed
+ * internal style and is not affected. Defaults to `4`.
+ */
+export interface SetMarginOptions {
+  /** Margin between instances, in physical pixels. */
+  margin: number
 }
 
 export interface Rect {
@@ -182,10 +214,34 @@ export async function setFontSizes(options: FontSizesOptions): Promise<void> {
 }
 
 /**
- * Choose the vertical layout for an instance. See {@link LayoutOptions}.
+ * Set the horizontal padding (physical px) of an instance. See
+ * {@link SetPaddingOptions}.
  */
-export async function setLayout(options: LayoutOptions): Promise<void> {
-  return await invoke('plugin:multiline-taskband|set_layout', { payload: options })
+export async function setPadding(options: SetPaddingOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_padding', { payload: options })
+}
+
+/**
+ * Move an existing instance to the other side of the taskbar (left/right)
+ * without recreating it. See {@link SetSideOptions}.
+ */
+export async function setSide(options: SetSideOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_side', { payload: options })
+}
+
+/**
+ * Re-order an instance within its side. See {@link SetOrderOptions}.
+ */
+export async function setOrder(options: SetOrderOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_order', { payload: options })
+}
+
+/**
+ * Set the global margin (physical px) between adjacent instances. See
+ * {@link SetMarginOptions}.
+ */
+export async function setMargin(options: SetMarginOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_margin', { payload: options })
 }
 
 /**
@@ -198,7 +254,7 @@ export async function setColors(options: SetColorsOptions): Promise<void> {
 }
 
 /**
- * Force the top and/or bottom line bold, independently of `layout`.
+ * Force the top and/or bottom line bold.
  */
 export async function setBold(options: SetBoldOptions): Promise<void> {
   return await invoke('plugin:multiline-taskband|set_bold', { payload: options })

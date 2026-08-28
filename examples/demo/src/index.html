@@ -14,8 +14,22 @@
       <p class="muted">
         tauri-plugin-multiline-taskband demo · Windows 10/11 任务栏双行文字。
         每个实例是叠加在任务栏上的透明窗口：<b>left</b> 贴开始按钮右侧，
-        <b>right</b> 贴通知区（托盘）左侧；同侧多实例按创建顺序横向排开。
+        <b>right</b> 贴通知区（托盘）左侧。每张卡片可<b>切换左右</b>、
+        <b>调整排序</b>（同侧按 order 排开），全局可设置 item 外边距。
       </p>
+
+      <section class="card">
+        <h2>全局</h2>
+        <div class="create-form">
+          <label class="inline-label" for="global-margin">item 外边距(px)</label>
+          <input id="global-margin" type="number" value="4" min="0" max="24" step="1"
+                 title="实例之间的间距（物理像素），默认 4" />
+          <button id="margin-btn">应用</button>
+        </div>
+        <p class="muted">
+          影响任务栏上相邻实例之间的间距；实例内部两行文字之间的空隙是固定样式，不受此设置影响。
+        </p>
+      </section>
 
       <section class="card">
         <h2>新建实例</h2>
@@ -35,6 +49,13 @@
           <span id="instance-status" class="muted"></span>
         </div>
         <ul id="instance-list" class="instance-list"></ul>
+
+        <h3 class="manage-heading">实例顺序与显示</h3>
+        <p class="muted">
+          拖拽 <span class="drag-handle-inline">⠿</span> 调整排序；行内可切换
+          left/right 位置与显示/隐藏（隐藏的实例不占位）。
+        </p>
+        <ul id="instance-manage-list" class="manage-list"></ul>
       </section>
     </main>
   </body>

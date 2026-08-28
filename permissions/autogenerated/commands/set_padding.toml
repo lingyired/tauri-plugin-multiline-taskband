@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-padding"
+description = "Enables the set_padding command without any pre-configured scope."
+commands.allow = ["set_padding"]
+
+[[permission]]
+identifier = "deny-set-padding"
+description = "Denies the set_padding command without any pre-configured scope."
+commands.deny = ["set_padding"]

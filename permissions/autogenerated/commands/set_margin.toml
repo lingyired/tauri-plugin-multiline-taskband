@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-margin"
+description = "Enables the set_margin command without any pre-configured scope."
+commands.allow = ["set_margin"]
+
+[[permission]]
+identifier = "deny-set-margin"
+description = "Denies the set_margin command without any pre-configured scope."
+commands.deny = ["set_margin"]

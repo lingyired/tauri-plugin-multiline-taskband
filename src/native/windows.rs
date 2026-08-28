@@ -88,7 +88,10 @@ enum UiCommand {
     Remove { id: String },
     SetText { id: String, top: String, bottom: String },
     SetFontSizes { id: String, top: f64, bottom: f64 },
-    SetLayout { id: String, layout: i32 },
+    SetPadding { id: String, left: i32, right: i32 },
+    SetSide { id: String, side: Side },
+    SetOrder { id: String, order: u64 },
+    SetMargin { margin: i32 },
     SetColors { id: String, top: ColorStyle, bottom: ColorStyle },
     SetBold { id: String, top: bool, bottom: bool },
     SetAlignment { id: String, top: i32, bottom: i32 },
@@ -193,7 +196,9 @@ struct Inst {
     /// Font sizes in points.
     top_size: f64,
     bottom_size: f64,
-    layout: i32,
+    /// Horizontal padding in physical pixels (gap between window edge and text).
+    pad_left: i32,
+    pad_right: i32,
     top_color: ColorStyle,
     bottom_color: ColorStyle,
     top_bold: bool,
@@ -209,7 +214,6 @@ struct Inst {
 
 impl Default for Inst {
     fn default() -> Self {
-        // layout 0 = emphasis-bottom (small label on top, large value below)
         Inst {
             hwnd: 0,
             side: Side::Right,
@@ -220,9 +224,12 @@ impl Default for Inst {
             h: 1,
             top: String::new(),
             bottom: String::new(),
-            top_size: 9.0,
-            bottom_size: 12.0,
-            layout: 0,
+            // Both lines share one default size; per-line sizes are the only
+            // way to tune the vertical emphasis (no layout presets).
+            top_size: 11.0,
+            bottom_size: 11.0,
+            pad_left: PAD,
+            pad_right: PAD,
             top_color: ColorStyle::Default,
             bottom_color: ColorStyle::Default,
             top_bold: false,
@@ -263,9 +270,27 @@ pub fn set_font_sizes(id: String, top: f64, bottom: f64) -> crate::Result<()> {
     Ok(())
 }
 
-pub fn set_layout(id: String, layout: i32) -> crate::Result<()> {
+pub fn set_padding(id: String, left: i32, right: i32) -> crate::Result<()> {
     start_if_needed();
-    post(UiCommand::SetLayout { id, layout });
+    post(UiCommand::SetPadding { id, left, right });
+    Ok(())
+}
+
+pub fn set_side(id: String, side: Side) -> crate::Result<()> {
+    start_if_needed();
+    post(UiCommand::SetSide { id, side });
+    Ok(())
+}
+
+pub fn set_order(id: String, order: u64) -> crate::Result<()> {
+    start_if_needed();
+    post(UiCommand::SetOrder { id, order });
+    Ok(())
+}
+
+pub fn set_margin(margin: i32) -> crate::Result<()> {
+    start_if_needed();
+    post(UiCommand::SetMargin { margin });
     Ok(())
 }
 
@@ -578,10 +603,30 @@ fn handle_command(cmd: UiCommand) {
             drop(guard);
             relayout_all();
         }
-        UiCommand::SetLayout { id, layout } => {
+        UiCommand::SetPadding { id, left, right } => {
             if let Some(inst) = guard.get_mut(&id) {
-                inst.layout = layout;
+                inst.pad_left = left;
+                inst.pad_right = right;
             }
+            drop(guard);
+            relayout_all();
+        }
+        UiCommand::SetSide { id, side } => {
+            if let Some(inst) = guard.get_mut(&id) {
+                inst.side = side;
+            }
+            drop(guard);
+            relayout_all();
+        }
+        UiCommand::SetOrder { id, order } => {
+            if let Some(inst) = guard.get_mut(&id) {
+                inst.order = order;
+            }
+            drop(guard);
+            relayout_all();
+        }
+        UiCommand::SetMargin { margin } => {
+            *GLOBAL_MARGIN.lock().unwrap_or_else(|e| e.into_inner()) = margin.max(0);
             drop(guard);
             relayout_all();
         }
@@ -620,6 +665,9 @@ fn handle_command(cmd: UiCommand) {
             if hwnd != 0 {
                 unsafe { ShowWindow(hwnd, if visible { SW_SHOW } else { SW_HIDE }) };
             }
+            // Relayout so hidden instances stop reserving space (their
+            // neighbours fill the gap) and re-shown ones take a slot again.
+            relayout_all();
         }
         UiCommand::Relayout => {
             drop(guard);
@@ -778,8 +826,27 @@ fn create_window(id: &str) -> Option<HWND> {
 // Layout (left/right edge positioning, Win10 + Win11)
 // ---------------------------------------------------------------------------
 
-const GAP: i32 = 4;
+/// Vertical gap between the two text lines *inside* an instance. This is a
+/// fixed internal style and is not exposed; the configurable spacing lives in
+/// `GLOBAL_MARGIN` below.
+const LINE_GAP: i32 = 4;
+
+/// Per-instance horizontal padding (window edge to text), the `set_padding`
+/// default. Exposed per-instance via `set_padding`.
 const PAD: i32 = 4;
+
+/// Default spacing between adjacent instances; overridable at runtime with
+/// `set_margin` (physical pixels).
+const DEFAULT_MARGIN: i32 = 4;
+
+/// Global spacing between adjacent instances (physical px). Read by the
+/// layout pass; the UI thread owns it but it can be touched from the command
+/// handler through the `SetMargin` UiCommand, so a plain static is fine.
+static GLOBAL_MARGIN: Mutex<i32> = Mutex::new(DEFAULT_MARGIN);
+
+fn margin() -> i32 {
+    *GLOBAL_MARGIN.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 fn dpi() -> i32 {
     let d = unsafe { GetDpiForSystem() };
@@ -869,17 +936,21 @@ fn relayout_all() {
     };
 
     if horizontal {
+        let m = margin();
         // Right side: stack leftward from the notification area.
         let mut cursor = taskbar.right_edge_for_right();
         for id in &right_ids {
             if let Some(inst) = guard.get_mut(id) {
+                if !inst.visible {
+                    continue; // hidden instances do not reserve space
+                }
                 let (w, h) = measure(inst);
                 inst.w = w;
                 inst.h = h;
                 cursor -= w;
                 inst.x = cursor;
                 inst.y = center_y(h);
-                cursor -= GAP;
+                cursor -= m;
                 paint_inst(inst);
             }
         }
@@ -887,40 +958,50 @@ fn relayout_all() {
         let mut cursor = taskbar.left_edge_for_left();
         for id in &left_ids {
             if let Some(inst) = guard.get_mut(id) {
+                if !inst.visible {
+                    continue;
+                }
                 let (w, h) = measure(inst);
                 inst.w = w;
                 inst.h = h;
                 inst.x = cursor;
                 inst.y = center_y(h);
-                cursor += w + GAP;
+                cursor += w + m;
                 paint_inst(inst);
             }
         }
     } else {
         // Vertical taskbar (left/right of screen): stack downward, centred.
-        let mut cursor_y = taskbar.rect.top + GAP;
+        let m = margin();
+        let mut cursor_y = taskbar.rect.top + m;
         for id in &right_ids {
             if let Some(inst) = guard.get_mut(id) {
+                if !inst.visible {
+                    continue;
+                }
                 let (w, h) = measure(inst);
                 inst.w = w;
                 inst.h = h;
                 inst.x = taskbar.rect.left
                     + (taskbar.rect.right - taskbar.rect.left - w) / 2;
                 inst.y = cursor_y;
-                cursor_y += h + GAP;
+                cursor_y += h + m;
                 paint_inst(inst);
             }
         }
-        let mut cursor_y = taskbar.rect.top + GAP;
+        let mut cursor_y = taskbar.rect.top + m;
         for id in &left_ids {
             if let Some(inst) = guard.get_mut(id) {
+                if !inst.visible {
+                    continue;
+                }
                 let (w, h) = measure(inst);
                 inst.w = w;
                 inst.h = h;
                 inst.x = taskbar.rect.left
                     + (taskbar.rect.right - taskbar.rect.left - w) / 2;
                 inst.y = cursor_y;
-                cursor_y += h + GAP;
+                cursor_y += h + m;
                 paint_inst(inst);
             }
         }
@@ -1038,8 +1119,8 @@ fn measure(inst: &Inst) -> (i32, i32) {
     let d = dpi();
     let (tw, th) = measure_text(&inst.top, pt_to_px(inst.top_size, d), inst.top_bold);
     let (bw, bh) = measure_text(&inst.bottom, pt_to_px(inst.bottom_size, d), inst.bottom_bold);
-    let w = tw.max(bw) + 2 * PAD;
-    let h = th + GAP + bh;
+    let w = tw.max(bw) + inst.pad_left + inst.pad_right;
+    let h = th + LINE_GAP + bh;
     (w.max(1), h.max(1))
 }
 
@@ -1219,8 +1300,8 @@ fn paint_inst(inst: &mut Inst) {
     let w = inst.w.max(1);
     let h = inst.h.max(1);
 
-    let top_x = align_x(inst.top_align, tw, w);
-    let bot_x = align_x(inst.bottom_align, bw, w);
+    let top_x = align_x(inst.top_align, tw, w, inst.pad_left, inst.pad_right);
+    let bot_x = align_x(inst.bottom_align, bw, w, inst.pad_left, inst.pad_right);
 
     let (tr, tg, tb) = resolve_color(&inst.top_color);
     let (br, bg, bb) = resolve_color(&inst.bottom_color);
@@ -1253,7 +1334,7 @@ fn paint_inst(inst: &mut Inst) {
         tb,
     );
     // Bottom band.
-    let bot_y = (th + GAP) as usize;
+    let bot_y = (th + LINE_GAP) as usize;
     blit_line(
         bits_u32,
         w as usize,
@@ -1321,13 +1402,13 @@ fn paint_inst(inst: &mut Inst) {
 }
 
 #[inline]
-fn align_x(align: i32, line_w: i32, win_w: i32) -> i32 {
+fn align_x(align: i32, line_w: i32, win_w: i32, pad_left: i32, pad_right: i32) -> i32 {
     if align == 2 {
-        (win_w - line_w).max(0)
+        (win_w - line_w - pad_right).max(0)
     } else if align == 1 {
         ((win_w - line_w) / 2).max(0)
     } else {
-        PAD
+        pad_left
     }
 }
 
@@ -1579,7 +1660,10 @@ fn instance_state_json(id: &str) -> Option<serde_json::Value> {
         "bottom": inst.bottom,
         "topSize": inst.top_size,
         "bottomSize": inst.bottom_size,
-        "layout": inst.layout,
+        "leftPadding": inst.pad_left,
+        "rightPadding": inst.pad_right,
+        "side": inst.side,
+        "order": inst.order,
         "topColor": top_color,
         "bottomColor": bottom_color,
         "topBold": inst.top_bold,

@@ -67,14 +67,57 @@ pub struct FontSizesRequest {
     pub bottom: f64,
 }
 
+/// Per-instance horizontal padding, in physical pixels.
+///
+/// The gap between the left/right edge of the instance window and its text.
+/// Defaults to the plugin's built-in `4` px; `left` and `right` can differ.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LayoutRequest {
+pub struct SetPaddingRequest {
     pub id: String,
-    /// 0 = emphasis-bottom (default, small label on top / large value below),
-    /// 1 = emphasis-top (the vertical mirror), 2 = equal (both lines share one
-    /// size, vertically centered & symmetric).
-    pub layout: i32,
+    /// Left padding in physical pixels.
+    pub left: i32,
+    /// Right padding in physical pixels.
+    pub right: i32,
+}
+
+/// Move an existing instance to the other side of the taskbar (left/right)
+/// without recreating it. Its creation order is preserved, so within the
+/// new side it keeps its relative position among same-side instances.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSideRequest {
+    pub id: String,
+    /// Edge to pin to: `"left"` or `"right"`.
+    pub side: Side,
+}
+
+/// Re-order an existing instance relative to its side peers.
+///
+/// Instances on the same side are laid out by ascending `order` (creation
+/// order by default). Setting `order` re-positions the instance within that
+/// sequence; instances on different sides do not interleave.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetOrderRequest {
+    pub id: String,
+    /// Sort key within the instance's side. Any integer works; using the
+    /// current neighbours' values (e.g. swap with an adjacent instance) is
+    /// the usual way to move an instance up/down.
+    pub order: u64,
+}
+
+/// Set the global margin between adjacent instances, in physical pixels.
+///
+/// This is the spacing between separate taskbar items (both horizontally on
+/// a bottom/top taskbar and vertically on a side taskbar). The gap between
+/// the two text lines *inside* an instance is a fixed internal style and is
+/// not affected. Defaults to `4`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetMarginRequest {
+    /// Margin between instances, in physical pixels.
+    pub margin: i32,
 }
 
 /// How the text of a taskbar line should be painted.
@@ -99,8 +142,7 @@ pub struct SetColorsRequest {
 /// Per-line bold toggle for the two taskbar lines.
 ///
 /// Each line is independent: `top`/`bottom` being `true` forces that line to
-/// render bold, overriding the weight `layout` would otherwise derive. `false`
-/// leaves the line's weight to the layout.
+/// render bold. `false` renders it with the normal weight.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetBoldRequest {

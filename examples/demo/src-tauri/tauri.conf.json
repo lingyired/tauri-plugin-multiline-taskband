@@ -12,7 +12,8 @@
       {
         "title": "Multiline Taskband Demo",
         "width": 880,
-        "height": 680
+        "height": 680,
+        "dragDropEnabled": false
       },
       {
         "label": "popup",
@@ -26,7 +27,8 @@
         "visible": false,
         "skipTaskbar": true,
         "shadow": false,
-        "resizable": false
+        "resizable": false,
+        "dragDropEnabled": false
       }
     ],
     "security": {

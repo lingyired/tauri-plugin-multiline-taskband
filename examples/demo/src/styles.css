@@ -101,6 +101,12 @@ input[type="color"] {
   min-width: 120px;
 }
 
+.inline-label {
+  font-size: 13px;
+  color: #666;
+  align-self: center;
+}
+
 /* ---------------------------------------------------------------------------
  * Instance cards
  * ------------------------------------------------------------------------- */
@@ -112,6 +118,76 @@ input[type="color"] {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Instance management list (drag re-order / side / visibility)
+ * ------------------------------------------------------------------------- */
+
+.manage-heading {
+  margin: 20px 0 4px;
+  font-size: 15px;
+}
+
+.manage-list {
+  list-style: none;
+  margin: 8px 0 4px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.06);
+  border: 1px solid rgba(128, 128, 128, 0.15);
+  cursor: grab;
+}
+
+.manage-row.dragging {
+  opacity: 0.5;
+  border-color: #396cd8;
+}
+
+.manage-row.drag-over {
+  border-color: #396cd8;
+  background: rgba(57, 108, 216, 0.12);
+  outline: 1px dashed #396cd8;
+  outline-offset: -2px;
+}
+
+.manage-row.row-hidden {
+  opacity: 0.45;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #888;
+  user-select: none;
+  font-size: 14px;
+  letter-spacing: -2px;
+}
+
+.drag-handle-inline {
+  color: #888;
+}
+
+.manage-name {
+  font-weight: 600;
+  min-width: 64px;
+  font-variant-numeric: tabular-nums;
+}
+
+.manage-row select.manage-side {
+  padding: 0.2em 0.4em;
+  box-shadow: none;
+  border: 1px solid #ccc;
+  font-size: 12px;
 }
 
 .instance-card {
@@ -136,6 +212,20 @@ input[type="color"] {
   min-width: 64px;
 }
 
+.instance-head select.side-select {
+  padding: 0.2em 0.4em;
+  box-shadow: none;
+  border: 1px solid #ccc;
+  font-size: 12px;
+}
+
+.move-btn {
+  padding: 0.1em 0.45em;
+  font-size: 13px;
+  line-height: 1.2;
+  min-width: 26px;
+}
+
 .badge {
   font-size: 11px;
   padding: 2px 8px;
@@ -144,9 +234,10 @@ input[type="color"] {
   color: #555;
 }
 
-.badge.side-badge {
-  background: rgba(10, 132, 255, 0.15);
-  color: #0a5cbf;
+.badge.order-badge {
+  background: rgba(255, 149, 0, 0.18);
+  color: #b05f00;
+  font-variant-numeric: tabular-nums;
 }
 
 .badge.ready-badge.ready {
@@ -284,20 +375,28 @@ input[type="color"] {
 
   .field-row > label,
   .mini,
-  .badge {
+  .badge,
+  .inline-label {
     color: #aaa;
   }
 
-  .badge.side-badge {
-    background: rgba(10, 132, 255, 0.25);
-    color: #6cb2ff;
+  .badge.order-badge {
+    background: rgba(255, 149, 0, 0.25);
+    color: #ffb84d;
   }
 
+  .instance-head select.side-select,
+  .manage-row select.manage-side,
   .field-row input[type="text"],
   .field-row input:not([type]),
   .field-row input[type="number"],
   .field-row select {
     border-color: #555;
+  }
+
+  .drag-handle,
+  .drag-handle-inline {
+    color: #999;
   }
 
   input[type="color"] {

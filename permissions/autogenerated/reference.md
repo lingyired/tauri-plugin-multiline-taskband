@@ -8,7 +8,10 @@ Allows all multiline-taskband commands.
 - `allow-remove`
 - `allow-set-text`
 - `allow-set-font-sizes`
-- `allow-set-layout`
+- `allow-set-padding`
+- `allow-set-side`
+- `allow-set-order`
+- `allow-set-margin`
 - `allow-set-colors`
 - `allow-set-bold`
 - `allow-set-alignment`
@@ -320,12 +323,12 @@ Denies the set_font_sizes command without any pre-configured scope.
 <tr>
 <td>
 
-`multiline-taskband:allow-set-layout`
+`multiline-taskband:allow-set-margin`
 
 </td>
 <td>
 
-Enables the set_layout command without any pre-configured scope.
+Enables the set_margin command without any pre-configured scope.
 
 </td>
 </tr>
@@ -333,12 +336,12 @@ Enables the set_layout command without any pre-configured scope.
 <tr>
 <td>
 
-`multiline-taskband:deny-set-layout`
+`multiline-taskband:deny-set-margin`
 
 </td>
 <td>
 
-Denies the set_layout command without any pre-configured scope.
+Denies the set_margin command without any pre-configured scope.
 
 </td>
 </tr>
@@ -372,6 +375,58 @@ Denies the set_menu command without any pre-configured scope.
 <tr>
 <td>
 
+`multiline-taskband:allow-set-order`
+
+</td>
+<td>
+
+Enables the set_order command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-set-order`
+
+</td>
+<td>
+
+Denies the set_order command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:allow-set-padding`
+
+</td>
+<td>
+
+Enables the set_padding command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-set-padding`
+
+</td>
+<td>
+
+Denies the set_padding command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `multiline-taskband:allow-set-popup-window`
 
 </td>
@@ -391,6 +446,32 @@ Enables the set_popup_window command without any pre-configured scope.
 <td>
 
 Denies the set_popup_window command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:allow-set-side`
+
+</td>
+<td>
+
+Enables the set_side command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-set-side`
+
+</td>
+<td>
+
+Denies the set_side command without any pre-configured scope.
 
 </td>
 </tr>

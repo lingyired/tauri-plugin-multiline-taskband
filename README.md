@@ -72,13 +72,16 @@ pnpm add ../tauri-plugin-multiline-taskband
 
 ```ts
 import {
-  create, setText, setLayout, setColors, setFontSizes, onReady,
+  create, setText, setColors, setFontSizes, setPadding, onReady,
 } from 'tauri-plugin-multiline-taskband-api'
 
-// A "holding group" on the RIGHT edge, value emphasised below the label.
+// A "holding group" on the RIGHT edge, value emphasised via a larger font.
 await create({ id: 'group-a', side: 'right', top: 'A股', bottom: '+1.23%' })
-await setLayout({ id: 'group-a', layout: 0 })
-await setFontSizes({ id: 'group-a', top: 9, bottom: 13 })
+// Per-line font sizes (points) are the only vertical control — no layout
+// presets. Both lines default to 11pt.
+await setFontSizes({ id: 'group-a', top: 11, bottom: 13 })
+// Per-instance horizontal padding in physical pixels (default 4/4).
+await setPadding({ id: 'group-a', left: 6, right: 6 })
 await setColors({ id: 'group-a', top: { type: 'default' }, bottom: { type: 'solid', value: '#FF4F44' } })
 
 // Another group, deeper on the RIGHT edge (stacks leftward automatically).
@@ -87,7 +90,7 @@ await create({ id: 'group-b', side: 'right', top: 'QDII', bottom: '-0.40%' })
 // A group on the LEFT edge (next to Start).
 await create({ id: 'group-c', side: 'left', top: '总收益', bottom: '+5.67%' })
 
-// On each refresh, just push the new numbers; layout/position are handled.
+// On each refresh, just push the new numbers; position is handled.
 await setText({ id: 'group-a', top: 'A股', bottom: liveA })
 ```
 
@@ -123,7 +126,7 @@ await setAutoPopup({ enabled: true })
 onClick('group-a', (e) => console.log('clicked', e.button, e.position))
 ```
 
-When an instance is clicked the plugin positions the popup next to the label (above it on a bottom taskbar, below on a top taskbar, to the side on a vertical one — multi-monitor aware), shows it, and emits `multiline-taskband://popup//open` **to the popup window only**, prefilled with that instance's current state (`top`/`bottom` text, sizes, layout, colors, bold, alignment). The popup's own JS then calls the regular `set_*` commands against that instance id, and the plugin hides the window again on focus loss. Listen per instance with `onPopupOpen(id, cb)` / `onPopupClose(id, cb)`.
+When an instance is clicked the plugin positions the popup next to the label (above it on a bottom taskbar, below on a top taskbar, to the side on a vertical one — multi-monitor aware), shows it, and emits `multiline-taskband://popup//open` **to the popup window only**, prefilled with that instance's current state (`top`/`bottom` text, sizes, padding, colors, bold, alignment). The popup's own JS then calls the regular `set_*` commands against that instance id, and the plugin hides the window again on focus loss. Listen per instance with `onPopupOpen(id, cb)` / `onPopupClose(id, cb)`.
 
 See `examples/demo/src/popup.html` + `popup.js` for a full reference implementation.
 
@@ -149,7 +152,7 @@ Verified on **Windows 11 Pro 22H2+ (build 26200, ARM64)** via `examples/demo`:
 - [x] Text updates (`set_text`) repaint without flicker; window width tracks the new text.
 - [x] **Clicking the taskbar does not hide the overlays** — on Win11 (build 26200) clicking the taskbar raises its z-order above non-activating layered windows, visually hiding them until re-composited. Fixed with a keep-alive timer (`keep_on_top`) that re-asserts `HWND_TOPMOST` only when an overlay ends up stacked below the taskbar (`GetWindow(GW_HWNDPREV)`).
 - [x] `left` instances pin to the **far left edge** of the taskbar (Win11's centered layout puts the Start button mid-taskbar; anchoring to the button would push labels toward the centre).
-- [x] **Clicking an instance's label opens its settings popup** next to the item (auto-popup on left click; position adapts to bottom/top/vertical taskbar). Popup edits (text/sizes/layout/colors/bold/alignment) apply live to that instance; the popup hides on focus loss. *Verified on Win11 26200 / ARM64 @ 200% DPI — see `C:\Users\lingsmbp\tmp-demo-cli\verify_popup.py` and the screenshots `popup_top.png` / `popup_right3.png`.*
+- [x] **Clicking an instance's label opens its settings popup** next to the item (auto-popup on left click; position adapts to bottom/top/vertical taskbar). Popup edits (text/sizes/padding/colors/bold/alignment) apply live to that instance; the popup hides on focus loss. *Verified on Win11 26200 / ARM64 @ 200% DPI — see `C:\Users\lingsmbp\tmp-demo-cli\verify_popup.py` and the screenshots `popup_top.png` / `popup_right3.png`.*
 - [x] Dark/light mode: `default` colour tracks the taskbar text colour (`COLOR_BTNTEXT`).
 - [ ] Taskbar relocate (bottom↔top, or monitor change) re-lays-out instances via the WinEvent hook — implemented, pending manual test.
 - [ ] Explorer restart (`taskkill /f /im explorer.exe && start explorer`) does not leave orphaned windows or crash the app — implemented, pending manual test.
