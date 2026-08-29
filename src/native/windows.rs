@@ -41,6 +41,7 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::os::windows::ffi::OsStrExt;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
@@ -81,6 +82,9 @@ fn rect_zero() -> RECT {
         bottom: 0,
     }
 }
+
+/// `DT_TOP = 0` — explicit name for readability (DrawText vertical alignment).
+const DT_TOP: u32 = 0x00000000;
 
 // ---------------------------------------------------------------------------
 // Cross-thread plumbing
@@ -1236,7 +1240,8 @@ fn measure_text(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i3
     if hdc == 0 {
         return ((text.len() as i32 * size_px).max(1), size_px.max(1));
     }
-    let font = make_font(size_px, bold, face);
+    let effective_face = face.or_else(|| default_face());
+    let font = make_font(size_px, bold, effective_face.as_deref(), DEFAULT_QUALITY);
     let old = unsafe { SelectObject(hdc, font) };
     unsafe { SetBkMode(hdc, TRANSPARENT as i32) };
     let wtext = to_wide(text);
@@ -1250,21 +1255,34 @@ fn measure_text(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i3
             DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX,
         )
     };
+    // Trim tmInternalLeading so that fonts with large line spacing (e.g.
+    // Microsoft YaHei) don't inflate the window height.  The glyph itself
+    // stays intact because the extra space is above the ink bounding box.
+    let mut tm: TEXTMETRICW = unsafe { std::mem::zeroed() };
+    unsafe { GetTextMetricsW(hdc, &mut tm) };
+    let w = r.right.max(1);
+    let h = (r.bottom.max(1) - tm.tmInternalLeading.max(0)).max(1);
     unsafe {
         SelectObject(hdc, old);
         DeleteObject(font);
         DeleteDC(hdc);
     }
-    (r.right.max(1), r.bottom.max(1))
+    (w, h)
 }
 
 /// Render a single line into a white-on-black DIB and return a per-pixel
 /// coverage (alpha) buffer. Because the text is white on black, every channel
 /// equals the coverage, so the red channel *is* the alpha — giving clean
 /// anti-aliased edges we can recolour to any target colour.
+///
+/// When the system's text-smoothing is set to ClearType the RGB channels differ
+/// (sub-pixel rendering).  We average them so that the single-channel `alpha`
+/// stays neutral — using only the red channel would introduce a horizontal
+/// offset of ~⅓ pixel on ClearType-enabled systems.
 fn render_line_alpha(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i32, i32, Vec<u8>) {
     let hdc = unsafe { CreateCompatibleDC(0) };
-    let font = make_font(size_px, bold, face);
+    let effective_face = face.or_else(|| default_face());
+    let font = make_font(size_px, bold, effective_face.as_deref(), DEFAULT_QUALITY);
     let old = unsafe { SelectObject(hdc, font) };
     unsafe { SetBkMode(hdc, TRANSPARENT as i32) };
 
@@ -1280,7 +1298,13 @@ fn render_line_alpha(text: &str, size_px: i32, bold: bool, face: Option<&str>) -
         )
     };
     let w = r.right.max(1);
-    let h = r.bottom.max(1);
+    let full_h = r.bottom.max(1);
+
+    // Trim tmInternalLeading (see measure_text for rationale).
+    let mut tm: TEXTMETRICW = unsafe { std::mem::zeroed() };
+    unsafe { GetTextMetricsW(hdc, &mut tm) };
+    let lead = tm.tmInternalLeading.max(0);
+    let h = (full_h - lead).max(1);
 
     let (hbmp, bits) = create_dib(hdc, w, h);
     let old_bmp = unsafe { SelectObject(hdc, hbmp) };
@@ -1291,28 +1315,36 @@ fn render_line_alpha(text: &str, size_px: i32, bold: bool, face: Option<&str>) -
     }
     unsafe {
         SetTextColor(hdc, rgb_val(255, 255, 255));
+        // Shift the draw rectangle up by `lead` pixels so that the glyph
+        // (which sits in the lower portion of the full cell) is centred
+        // in our trimmed DIB.
         let mut dr = RECT {
             left: 0,
-            top: 0,
+            top: -(lead as i32),
             right: w,
-            bottom: h,
+            bottom: (full_h - lead) as i32,
         };
         DrawTextW(
             hdc,
             wtext.as_ptr(),
             -1,
             &mut dr,
-            DT_SINGLELINE | DT_NOPREFIX | DT_VCENTER | DT_CENTER,
+            DT_SINGLELINE | DT_NOPREFIX | DT_CENTER | DT_TOP,
         );
     }
 
+    // RGB-average coverage instead of red-only.  On ClearType this captures
+    // the full sub-pixel information without colour fringing; on grayscale AA
+    // it is identical to taking any single channel.
     let mut alpha = vec![0u8; (w * h) as usize];
     for (i, px) in unsafe { std::slice::from_raw_parts(bits_u32, (w * h) as usize) }
         .iter()
         .enumerate()
     {
-        // white text => R == G == B == coverage
-        alpha[i] = ((*px >> 16) & 0xFF) as u8;
+        let r = ((*px >> 16) & 0xFF) as u32;
+        let g = (*px >> 8) & 0xFF;
+        let b = *px & 0xFF;
+        alpha[i] = ((r + g + b) / 3) as u8;
     }
 
     unsafe {
@@ -1325,7 +1357,66 @@ fn render_line_alpha(text: &str, size_px: i32, bold: bool, face: Option<&str>) -
     (w, h, alpha)
 }
 
-fn make_font(size_px: i32, bold: bool, face: Option<&str>) -> HFONT {
+/// Return a locale-aware default font family name, or `None` to fall back
+/// to GDI's system default.  The candidate list is ordered by visual quality
+/// for CJK text on Windows 10/11; each entry is probed with
+/// `EnumFontFamiliesExW` so unknown names silently skip.
+///
+/// This mirrors TrafficMonitor's approach: its language-pack `.ini` files map
+/// `DEFAULT_FONT` → `"微软雅黑"` (Simplified Chinese), `"Microsoft JhengHei"`
+/// (Traditional), `"Segoe UI"` (everything else).  We go one step further by
+/// checking actual font availability at runtime.
+static FONT_ENUM_FOUND: AtomicBool = AtomicBool::new(false);
+
+unsafe extern "system" fn font_enum_cb(
+    _lfntm: *const LOGFONTW,
+    _tm: *const TEXTMETRICW,
+    _ftype: u32,
+    _lparam: isize,
+) -> i32 {
+    FONT_ENUM_FOUND.store(true, Ordering::Relaxed);
+    0 // stop enumerating
+}
+
+fn default_face() -> Option<&'static str> {
+    // Ordered by preference: best CJK rendering first, then generic UI font.
+    // Both English and localized names are tried because GDI's face-name
+    // matching is locale-sensitive on some Windows builds.
+    static CANDIDATES: &[&str] = &[
+        "Microsoft YaHei",
+        "Microsoft YaHei UI",
+        "微软雅黑",
+        "Microsoft JhengHei",
+        "Microsoft JhengHei UI",
+        "微軟正黑體",
+        "Segoe UI",
+    ];
+
+    let hdc = unsafe { CreateCompatibleDC(0) };
+    if hdc == 0 {
+        return None;
+    }
+
+    for &name in CANDIDATES {
+        let mut lf: LOGFONTW = unsafe { std::mem::zeroed() };
+        lf.lfCharSet = DEFAULT_CHARSET;
+        let wide = to_wide(name);
+        let n = wide.len().min((LF_FACESIZE - 1) as usize);
+        lf.lfFaceName[..n].copy_from_slice(&wide[..n]);
+        lf.lfFaceName[n] = 0;
+
+        FONT_ENUM_FOUND.store(false, Ordering::Relaxed);
+        unsafe { EnumFontFamiliesExW(hdc, &lf, Some(font_enum_cb), 0, 0) };
+        if FONT_ENUM_FOUND.load(Ordering::Relaxed) {
+            unsafe { DeleteDC(hdc) };
+            return Some(name);
+        }
+    }
+    unsafe { DeleteDC(hdc) };
+    None
+}
+
+fn make_font(size_px: i32, bold: bool, face: Option<&str>, quality: u8) -> HFONT {
     let weight: i32 = if bold { FW_BOLD as i32 } else { FW_NORMAL as i32 };
     // `LF_FACESIZE` is 32 u16s: at most 31 characters plus the NUL terminator.
     // All-zero (the default below) selects the system default font. Over-long
@@ -1350,7 +1441,7 @@ fn make_font(size_px: i32, bold: bool, face: Option<&str>) -> HFONT {
         lfCharSet: DEFAULT_CHARSET,
         lfOutPrecision: OUT_DEFAULT_PRECIS,
         lfClipPrecision: CLIP_DEFAULT_PRECIS,
-        lfQuality: ANTIALIASED_QUALITY,
+        lfQuality: quality,
         lfPitchAndFamily: DEFAULT_PITCH,
         lfFaceName: face_name,
     };
