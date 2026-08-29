@@ -119,6 +119,11 @@
         display: flex;
         gap: 8px;
       }
+      /* `hidden` must win over `.row`'s own `display: flex` (author styles beat
+         the UA stylesheet), so the collapsed custom-color row really hides. */
+      .row[hidden] {
+        display: none;
+      }
       .row > .field {
         flex: 1;
       }
@@ -235,30 +240,44 @@
       </fieldset>
 
       <fieldset class="colors">
-        <legend>Top line color</legend>
+        <legend>Text color</legend>
         <div class="field">
-          <label for="popup-top-color">Color</label>
-          <input type="color" id="popup-top-color" value="#ffffff" />
+          <label for="popup-top-color-mode">Top line</label>
+          <select id="popup-top-color-mode">
+            <option value="default">System default (follows theme)</option>
+            <option value="solid">Custom color</option>
+          </select>
+          <div class="row" id="popup-top-solid-row" hidden>
+            <div class="field">
+              <label for="popup-top-color">Color</label>
+              <input type="color" id="popup-top-color" value="#ffffff" />
+            </div>
+            <div class="field">
+              <label for="popup-top-hex">Hex</label>
+              <input type="text" id="popup-top-hex" value="#ffffff" />
+            </div>
+          </div>
         </div>
         <div class="field">
-          <label for="popup-top-hex">Hex (auto-filled, editable)</label>
-          <input type="text" id="popup-top-hex" value="#ffffff" />
-        </div>
-      </fieldset>
-
-      <fieldset class="colors">
-        <legend>Bottom line color</legend>
-        <div class="field">
-          <label for="popup-bottom-color">Color</label>
-          <input type="color" id="popup-bottom-color" value="#ffffff" />
-        </div>
-        <div class="field">
-          <label for="popup-bottom-hex">Hex (auto-filled, editable)</label>
-          <input type="text" id="popup-bottom-hex" value="#ffffff" />
+          <label for="popup-bottom-color-mode">Bottom line</label>
+          <select id="popup-bottom-color-mode">
+            <option value="default">System default (follows theme)</option>
+            <option value="solid">Custom color</option>
+          </select>
+          <div class="row" id="popup-bottom-solid-row" hidden>
+            <div class="field">
+              <label for="popup-bottom-color">Color</label>
+              <input type="color" id="popup-bottom-color" value="#ffffff" />
+            </div>
+            <div class="field">
+              <label for="popup-bottom-hex">Hex</label>
+              <input type="text" id="popup-bottom-hex" value="#ffffff" />
+            </div>
+          </div>
         </div>
         <div class="row">
           <button id="popup-colors">Apply colors</button>
-          <button id="popup-reset-colors" class="secondary">Reset</button>
+          <button id="popup-reset-colors" class="secondary">Reset to system default</button>
         </div>
       </fieldset>
 

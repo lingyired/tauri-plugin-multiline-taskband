@@ -41,6 +41,10 @@ window.addEventListener("DOMContentLoaded", () => {
   const topHexEl = document.querySelector("#popup-top-hex");
   const bottomColorEl = document.querySelector("#popup-bottom-color");
   const bottomHexEl = document.querySelector("#popup-bottom-hex");
+  const topColorModeEl = document.querySelector("#popup-top-color-mode");
+  const bottomColorModeEl = document.querySelector("#popup-bottom-color-mode");
+  const topSolidRowEl = document.querySelector("#popup-top-solid-row");
+  const bottomSolidRowEl = document.querySelector("#popup-bottom-solid-row");
   const topBoldEl = document.querySelector("#popup-top-bold");
   const bottomBoldEl = document.querySelector("#popup-bottom-bold");
   const topAlignEl = document.querySelector("#popup-top-align");
@@ -54,6 +58,18 @@ window.addEventListener("DOMContentLoaded", () => {
   bottomColorEl.addEventListener("input", () => {
     bottomHexEl.value = bottomColorEl.value;
   });
+
+  // "System default" hides the picker/hex row — applying then sends
+  // `{ type: "default" }` and the plugin paints the line black on a light
+  // taskbar / white on a dark one, following theme switches automatically.
+  // Switching back to "Custom color" reveals the previously picked color.
+  const syncSolidRow = (modeEl, rowEl) => {
+    rowEl.hidden = modeEl.value !== "solid";
+  };
+  topColorModeEl.addEventListener("change", () => syncSolidRow(topColorModeEl, topSolidRowEl));
+  bottomColorModeEl.addEventListener("change", () =>
+    syncSolidRow(bottomColorModeEl, bottomSolidRowEl),
+  );
 
   // Live-update the font size readouts as the sliders move.
   topSizeEl.addEventListener("input", () => {
@@ -106,16 +122,20 @@ window.addEventListener("DOMContentLoaded", () => {
     if (bottomBold !== undefined && bottomBold !== null) bottomBoldEl.checked = !!bottomBold;
     if (topAlign !== undefined && topAlign !== null) topAlignEl.value = String(topAlign);
     if (bottomAlign !== undefined && bottomAlign !== null) bottomAlignEl.value = String(bottomAlign);
-    // Show the instance's current solid colors; when the line uses the system
-    // color the picker keeps its previous value (applying always sends solid).
-    if (topColor !== undefined && topColor !== null && topColor.type === "solid" && /^#[0-9a-fA-F]{6}$/.test(topColor.value)) {
-      topColorEl.value = topColor.value;
-      topHexEl.value = topColor.value;
-    }
-    if (bottomColor !== undefined && bottomColor !== null && bottomColor.type === "solid" && /^#[0-9a-fA-F]{6}$/.test(bottomColor.value)) {
-      bottomColorEl.value = bottomColor.value;
-      bottomHexEl.value = bottomColor.value;
-    }
+    // Per-line color mode: a `solid` color selects "Custom color" and
+    // pre-fills the picker/hex; anything else (`default`) selects "System
+    // default" and hides the picker row.
+    const syncColorMode = (color, modeEl, rowEl, colorEl, hexEl) => {
+      const solid = !!color && color.type === "solid";
+      modeEl.value = solid ? "solid" : "default";
+      rowEl.hidden = !solid;
+      if (solid) {
+        if (/^#[0-9a-fA-F]{6}$/.test(color.value)) colorEl.value = color.value;
+        hexEl.value = color.value || "";
+      }
+    };
+    syncColorMode(topColor, topColorModeEl, topSolidRowEl, topColorEl, topHexEl);
+    syncColorMode(bottomColor, bottomColorModeEl, bottomSolidRowEl, bottomColorEl, bottomHexEl);
 
     // Re-sync the store with the plugin's authoritative state so a failed
     // apply earlier can't leave stale settings behind. Only when the payload
@@ -281,11 +301,19 @@ window.addEventListener("DOMContentLoaded", () => {
     return document.querySelector(`#popup-${line}-color`).value;
   };
 
-  // Apply the chosen colors to whichever instance opened this popup.
+  // Apply the chosen colors to whichever instance opened this popup. Each
+  // line is sent according to its own mode: "System default" sends
+  // `{ type: "default" }`, "Custom color" sends the picked hex.
   document.querySelector("#popup-colors").addEventListener("click", () => {
     if (!requireInstance()) return;
-    const top = { type: "solid", value: resolveColor("top") };
-    const bottom = { type: "solid", value: resolveColor("bottom") };
+    const top =
+      topColorModeEl.value === "solid"
+        ? { type: "solid", value: resolveColor("top") }
+        : { type: "default" };
+    const bottom =
+      bottomColorModeEl.value === "solid"
+        ? { type: "solid", value: resolveColor("bottom") }
+        : { type: "default" };
     invoke("plugin:multiline-taskband|set_colors", {
       payload: { id: currentInstanceId, top, bottom },
     })
@@ -297,10 +325,15 @@ window.addEventListener("DOMContentLoaded", () => {
       .catch((err) => console.error("Failed to set colors:", err));
   });
 
-  // Revert to the system default text color for whichever instance opened
-  // this popup.
+  // Revert both lines to the system default text color and reflect that in
+  // the mode selects (the custom pickers keep their last value so switching
+  // back to "Custom color" restores the previous choice).
   document.querySelector("#popup-reset-colors").addEventListener("click", () => {
     if (!requireInstance()) return;
+    topColorModeEl.value = "default";
+    bottomColorModeEl.value = "default";
+    topSolidRowEl.hidden = true;
+    bottomSolidRowEl.hidden = true;
     const top = { type: "default" };
     const bottom = { type: "default" };
     invoke("plugin:multiline-taskband|set_colors", {
