@@ -281,5 +281,11 @@ button:active {
   .instance-side {
     background-color: #0f0f0f;
     border-color: #555;
+    color: #ffffff;
+  }
+
+  .instance-side option {
+    background-color: #0f0f0f;
+    color: #ffffff;
   }
 }
