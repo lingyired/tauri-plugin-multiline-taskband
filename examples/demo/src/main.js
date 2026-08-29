@@ -8,6 +8,7 @@
 // to localStorage right away (see settings.js) and re-applied to the plugin
 // on the next launch, so the taskbar looks exactly like it did last session.
 import {
+  DEFAULT_EDGE_MARGIN,
   DEFAULT_MARGIN,
   PRESETS,
   instanceDefaults,
@@ -327,6 +328,32 @@ window.addEventListener("DOMContentLoaded", async () => {
       invoke("plugin:multiline-taskband|set_margin", {
         payload: { margin: v },
       }).catch((err) => console.error("set_margin:", err));
+    }
+  });
+
+  // Pre-fill the persisted edge margins and apply them on boot (only when
+  // either differs from the plugin default, so a first run is a no-op).
+  document.querySelector("#edge-margin-left").value = settings.leftEdgeMargin;
+  document.querySelector("#edge-margin-right").value = settings.rightEdgeMargin;
+  if (
+    settings.leftEdgeMargin !== DEFAULT_EDGE_MARGIN ||
+    settings.rightEdgeMargin !== DEFAULT_EDGE_MARGIN
+  ) {
+    await invoke("plugin:multiline-taskband|set_edge_margins", {
+      payload: { left: settings.leftEdgeMargin, right: settings.rightEdgeMargin },
+    }).catch((err) => console.error("set_edge_margins:", err));
+  }
+
+  document.querySelector("#edge-margins-btn").addEventListener("click", () => {
+    const left = parseInt(document.querySelector("#edge-margin-left").value, 10);
+    const right = parseInt(document.querySelector("#edge-margin-right").value, 10);
+    if (Number.isFinite(left) && Number.isFinite(right)) {
+      settings.leftEdgeMargin = left;
+      settings.rightEdgeMargin = right;
+      persist();
+      invoke("plugin:multiline-taskband|set_edge_margins", {
+        payload: { left, right },
+      }).catch((err) => console.error("set_edge_margins:", err));
     }
   });
 

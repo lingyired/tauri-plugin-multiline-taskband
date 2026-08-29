@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-edge-margins"
+description = "Enables the set_edge_margins command without any pre-configured scope."
+commands.allow = ["set_edge_margins"]
+
+[[permission]]
+identifier = "deny-set-edge-margins"
+description = "Denies the set_edge_margins command without any pre-configured scope."
+commands.deny = ["set_edge_margins"]

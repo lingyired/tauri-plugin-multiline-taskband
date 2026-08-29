@@ -84,6 +84,15 @@ pub(crate) async fn set_margin<R: Runtime>(
 }
 
 #[command]
+pub(crate) async fn set_edge_margins<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetEdgeMarginsRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband()
+        .set_edge_margins(payload.left, payload.right)
+}
+
+#[command]
 pub(crate) async fn set_colors<R: Runtime>(
     app: AppHandle<R>,
     payload: SetColorsRequest,

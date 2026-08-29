@@ -18,13 +18,15 @@
         on the taskbar; click one <b>on the taskbar</b> (or its Settings button
         below) to open its settings popup (text, font sizes, padding, colors,
         bold, alignment, side). All settings — text, appearance, side,
-        shown/hidden, the global margin and any instances you create — are
+        shown/hidden, the global margins and any instances you create — are
         saved automatically and restored on the next launch.
       </p>
       <p class="muted">
         Windows 10 / 11: <b>left</b> instances hug the taskbar's left edge,
         <b>right</b> instances sit next to the notification area (tray);
-        same-side instances are laid out side by side in creation order.
+        same-side instances are laid out side by side in creation order. The
+        edge margins below push each group away from its edge, e.g. to make
+        room for other tools like TrafficMonitor.
       </p>
 
       <section class="card">
@@ -35,6 +37,15 @@
           <input id="global-margin" type="number" value="4" min="0" max="24" step="1"
                  title="Spacing between instances (physical pixels), default 4" />
           <button id="margin-btn">Apply</button>
+        </div>
+        <div class="create-form">
+          <label class="inline-label" for="edge-margin-left">Left edge margin (px)</label>
+          <input id="edge-margin-left" type="number" value="0" min="0" max="500" step="1"
+                 title="Extra gap between the taskbar's left edge and the left-side instances (physical pixels), default 0" />
+          <label class="inline-label" for="edge-margin-right">Right edge margin (px)</label>
+          <input id="edge-margin-right" type="number" value="0" min="0" max="500" step="1"
+                 title="Extra gap between the notification area and the right-side instances (physical pixels), default 0" />
+          <button id="edge-margins-btn">Apply</button>
         </div>
       </section>
 

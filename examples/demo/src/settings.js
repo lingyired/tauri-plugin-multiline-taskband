@@ -9,6 +9,10 @@
 // Storage shape (`multiline-taskband-demo:settings-v1`):
 //   {
 //     margin: 4,                       // global instance gap (physical px)
+//     leftEdgeMargin: 0,               // extra gap after the taskbar's left
+//                                     // edge for the left group (physical px)
+//     rightEdgeMargin: 0,              // extra gap before the notification
+//                                     // area for the right group (physical px)
 //     instances: { [id]: Instance },   // per-instance appearance + shown
 //     customOrder: [id, ...]           // runtime-created instances, in
 //                                      // creation order (layout order)
@@ -24,6 +28,7 @@ const STORAGE_KEY = "multiline-taskband-demo:settings-v1";
 const LEGACY_SHOWN_KEY = "multiline-taskband-demo:shown-v2";
 
 export const DEFAULT_MARGIN = 4;
+export const DEFAULT_EDGE_MARGIN = 0;
 export const DEFAULT_FONT_SIZE = 11;
 export const DEFAULT_PADDING = 4;
 
@@ -74,7 +79,13 @@ function normalizeInstance(id, raw) {
  * preset, not a tracked custom instance) are dropped.
  */
 export function loadSettings(presets = PRESETS) {
-  const settings = { margin: DEFAULT_MARGIN, instances: {}, customOrder: [] };
+  const settings = {
+    margin: DEFAULT_MARGIN,
+    leftEdgeMargin: DEFAULT_EDGE_MARGIN,
+    rightEdgeMargin: DEFAULT_EDGE_MARGIN,
+    instances: {},
+    customOrder: [],
+  };
   for (const p of presets) {
     settings.instances[p.id] = instanceDefaults(p.id, p.side);
   }
@@ -86,6 +97,12 @@ export function loadSettings(presets = PRESETS) {
   if (raw && typeof raw === "object") {
     if (typeof raw.margin === "number" && Number.isFinite(raw.margin)) {
       settings.margin = raw.margin;
+    }
+    if (typeof raw.leftEdgeMargin === "number" && Number.isFinite(raw.leftEdgeMargin)) {
+      settings.leftEdgeMargin = raw.leftEdgeMargin;
+    }
+    if (typeof raw.rightEdgeMargin === "number" && Number.isFinite(raw.rightEdgeMargin)) {
+      settings.rightEdgeMargin = raw.rightEdgeMargin;
     }
     if (raw.instances && typeof raw.instances === "object") {
       for (const [id, inst] of Object.entries(raw.instances)) {
@@ -128,7 +145,7 @@ export function saveSettings(settings) {
  * Merge field updates into one instance's stored record and save. Used by
  * the popup window, which knows a single instance id but not the presets:
  * it patches that instance's own entry and preserves host-owned fields
- * (shown, customOrder, margin). Returns the merged instance.
+ * (shown, customOrder, margin, edge margins). Returns the merged instance.
  */
 export function saveInstanceState(id, updates) {
   const settings = loadSettings();

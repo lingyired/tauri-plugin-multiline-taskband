@@ -19,6 +19,7 @@ permissions = [
   "allow-set-side",
   "allow-set-order",
   "allow-set-margin",
+  "allow-set-edge-margins",
   "allow-set-colors",
   "allow-set-bold",
   "allow-set-alignment",

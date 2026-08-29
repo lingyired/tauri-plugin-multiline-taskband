@@ -88,6 +88,20 @@ export interface SetMarginOptions {
   margin: number
 }
 
+/**
+ * Extra edge margins for the left/right instance groups, in physical pixels.
+ * `left` shifts the whole left-side group away from the taskbar's left edge;
+ * `right` shifts the whole right-side group away from the notification area
+ * (tray) — useful for dodging other tools embedded in the taskbar, such as
+ * TrafficMonitor. Both default to `0`. Horizontal taskbars only.
+ */
+export interface SetEdgeMarginsOptions {
+  /** Extra gap after the taskbar's left edge for the left-side group. Omit to keep the current value. */
+  left?: number
+  /** Extra gap before the notification area for the right-side group. Omit to keep the current value. */
+  right?: number
+}
+
 export interface Rect {
   x: number
   y: number
@@ -288,6 +302,15 @@ export async function setOrder(options: SetOrderOptions): Promise<void> {
  */
 export async function setMargin(options: SetMarginOptions): Promise<void> {
   return await invoke('plugin:multiline-taskband|set_margin', { payload: options })
+}
+
+/**
+ * Set extra edge margins (physical px) for the left/right instance groups.
+ * See {@link SetEdgeMarginsOptions}. A field that is omitted keeps its
+ * current value.
+ */
+export async function setEdgeMargins(options: SetEdgeMarginsOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_edge_margins', { payload: options })
 }
 
 /**

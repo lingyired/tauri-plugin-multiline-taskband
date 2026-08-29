@@ -148,6 +148,24 @@ impl<R: Runtime> MultilineTaskband<R> {
         }
     }
 
+    /// Set extra edge margins (physical px) for the left/right instance
+    /// groups. See [`SetEdgeMarginsRequest`].
+    pub fn set_edge_margins(
+        &self,
+        left: Option<i32>,
+        right: Option<i32>,
+    ) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_edge_margins(left, right)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (left, right);
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
     pub fn set_colors(
         &self,
         id: String,

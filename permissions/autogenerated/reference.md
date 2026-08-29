@@ -12,6 +12,7 @@ Default permissions for the multiline-taskband plugin (core rendering + read-onl
 - `allow-set-side`
 - `allow-set-order`
 - `allow-set-margin`
+- `allow-set-edge-margins`
 - `allow-set-colors`
 - `allow-set-bold`
 - `allow-set-alignment`
@@ -285,6 +286,32 @@ Enables the set_colors command without any pre-configured scope.
 <td>
 
 Denies the set_colors command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:allow-set-edge-margins`
+
+</td>
+<td>
+
+Enables the set_edge_margins command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-set-edge-margins`
+
+</td>
+<td>
+
+Denies the set_edge_margins command without any pre-configured scope.
 
 </td>
 </tr>

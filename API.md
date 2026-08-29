@@ -92,6 +92,7 @@ All functions are async and return a `Promise`.
 | `rect` | `rect(options: IdOptions): Promise<Rect>` | On-screen rectangle of an instance in **physical pixels** (origin top-left, y down). Useful for anchoring your own windows. |
 | `setPadding` | `setPadding(options: SetPaddingOptions): Promise<void>` | Per-instance horizontal padding between the window edges and the text, in physical pixels. `left` and `right` can differ; defaults to `4` / `4`. |
 | `setMargin` | `setMargin(options: SetMarginOptions): Promise<void>` | **Global** margin between adjacent instances, in physical pixels (no `id`). Defaults to `4`. The gap between the two text lines *inside* an instance is a fixed internal style and is not affected. |
+| `setEdgeMargins` | `setEdgeMargins(options: SetEdgeMarginsOptions): Promise<void>` | **Global** extra edge margins, in physical pixels (no `id`): `left` shifts the whole left-side group away from the taskbar's left edge, `right` shifts the whole right-side group away from the notification area — e.g. to dodge other embedded tools like TrafficMonitor. Both default to `0`; omitted fields keep their current value. Horizontal taskbars only. |
 | `setSide` | `setSide(options: SetSideOptions): Promise<void>` | Move an existing instance to the other side of the taskbar (`'left'`/`'right'`) without recreating it. Creation order is preserved, so it keeps its relative position within the new side. |
 | `setOrder` | `setOrder(options: SetOrderOptions): Promise<void>` | Re-order an instance within its side. Same-side instances are laid out by ascending `order` (creation order by default); use the neighbours' current values (e.g. swap with an adjacent instance) to move it up/down. |
 
@@ -172,6 +173,8 @@ export interface SetSideOptions { id: string; side: Side }
 export interface SetOrderOptions { id: string; order: number }
 
 export interface SetMarginOptions { margin: number }
+
+export interface SetEdgeMarginsOptions { left?: number; right?: number }
 
 export type ColorStyle = { type: 'default' } | { type: 'solid'; value: string }
 
@@ -319,6 +322,7 @@ All guest-js functions are thin wrappers over these. Payloads are wrapped in a s
 | `plugin:multiline-taskband\|set_side` | `{ id, side }` |
 | `plugin:multiline-taskband\|set_order` | `{ id, order }` |
 | `plugin:multiline-taskband\|set_margin` | `{ margin }` |
+| `plugin:multiline-taskband\|set_edge_margins` | `{ left?, right? }` |
 | `plugin:multiline-taskband\|set_colors` | `{ id, top: ColorStyle, bottom: ColorStyle }` |
 | `plugin:multiline-taskband\|set_bold` | `{ id, top, bottom }` |
 | `plugin:multiline-taskband\|set_alignment` | `{ id, top, bottom }` |
@@ -356,6 +360,7 @@ app.multiline_taskband().set_text("group-a".into(), "A股".into(), "+1.23%".into
 | `set_side(id, side)` | `set_side` |
 | `set_order(id, order)` | `set_order` |
 | `set_margin(margin)` | `set_margin` |
+| `set_edge_margins(left: Option<i32>, right: Option<i32>)` | `set_edge_margins` |
 | `set_colors(id, top, bottom)` | `set_colors` |
 | `set_bold(id, top, bottom)` | `set_bold` |
 | `set_alignment(id, top, bottom)` | `set_alignment` |
@@ -375,7 +380,7 @@ All methods return `crate::Result<T>` (`tauri_plugin_multiline_taskband::Result`
 
 The default permission set (`multiline-taskband:default`) covers core rendering + read-only queries:
 
-`allow-create`, `allow-set-text`, `allow-set-font-sizes`, `allow-set-font-family`, `allow-set-padding`, `allow-set-side`, `allow-set-order`, `allow-set-margin`, `allow-set-colors`, `allow-set-bold`, `allow-set-alignment`, `allow-set-visible`, `allow-rect`, `allow-is-visible`, `allow-set-auto-popup`
+`allow-create`, `allow-set-text`, `allow-set-font-sizes`, `allow-set-font-family`, `allow-set-padding`, `allow-set-side`, `allow-set-order`, `allow-set-margin`, `allow-set-edge-margins`, `allow-set-colors`, `allow-set-bold`, `allow-set-alignment`, `allow-set-visible`, `allow-rect`, `allow-is-visible`, `allow-set-auto-popup`
 
 High-impact commands are intentionally **not** in the default set — grant them explicitly:
 
@@ -409,6 +414,7 @@ All commands serialise errors as strings; the possible variants are:
 - Font sizes are in **points**; both lines default to `11`. The window is sized automatically: width from the wider line plus padding, height from the sum of both line heights plus a fixed internal line gap.
 - Instances survive taskbar moves and explorer restarts: a `WinEventHook` on the taskbar re-lays-out every instance when the taskbar moves/resizes (DPI change, monitor change) and recreates overlays if the taskbar window is rebuilt. Clicking the taskbar does not hide the overlays (a keep-alive timer re-asserts topmost z-order when needed).
 - `set_margin` is global — it affects every instance, including ones created later. `set_padding` is per-instance.
+- `setEdgeMargins` is also global, and is clamped to `>= 0`: `left` offsets the left-side group's stacking start from `taskbar left edge + 2` and `right` offsets the right-side group's stacking start from the tray edge, so larger values push each whole group further into the free taskbar space. Both default to `0`; on vertical taskbars they are ignored.
 - The right-edge anchor is the tray/notification area, not the last system icon; the left-edge anchor on Win11 is the far left edge of the taskbar (Win11's centered layout puts the Start button mid-taskbar).
 - The plugin registers the popup's auto-hide (focus loss → hide + `popup-close`) the first time it shows the window; it ignores the initial blur that the `show()` itself can cause.
 - The popup window is a plain Tauri webview window owned by your app (recommended flags: `decorations: false`, `transparent: true`, `alwaysOnTop: true`, `visible: false`, `skipTaskbar: true`, `resizable: false`). The plugin only positions, shows and hides it.

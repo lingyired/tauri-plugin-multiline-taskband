@@ -102,6 +102,7 @@ enum UiCommand {
     SetSide { id: String, side: Side },
     SetOrder { id: String, order: u64 },
     SetMargin { margin: i32 },
+    SetEdgeMargins { left: Option<i32>, right: Option<i32> },
     SetColors { id: String, top: ColorStyle, bottom: ColorStyle },
     SetBold { id: String, top: bool, bottom: bool },
     SetAlignment { id: String, top: i32, bottom: i32 },
@@ -332,6 +333,12 @@ pub fn set_order(id: String, order: u64) -> crate::Result<()> {
 pub fn set_margin(margin: i32) -> crate::Result<()> {
     start_if_needed();
     post(UiCommand::SetMargin { margin });
+    Ok(())
+}
+
+pub fn set_edge_margins(left: Option<i32>, right: Option<i32>) -> crate::Result<()> {
+    start_if_needed();
+    post(UiCommand::SetEdgeMargins { left, right });
     Ok(())
 }
 
@@ -692,6 +699,21 @@ fn handle_command(cmd: UiCommand) {
             drop(guard);
             relayout_all();
         }
+        UiCommand::SetEdgeMargins { left, right } => {
+            {
+                let mut em = GLOBAL_EDGE_MARGINS
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                if let Some(l) = left {
+                    em.left = l.max(0);
+                }
+                if let Some(r) = right {
+                    em.right = r.max(0);
+                }
+            }
+            drop(guard);
+            relayout_all();
+        }
         UiCommand::SetColors { id, top, bottom } => {
             if let Some(inst) = guard.get_mut(&id) {
                 inst.top_color = top;
@@ -945,6 +967,24 @@ const DEFAULT_MARGIN: i32 = 4;
 /// handler through the `SetMargin` UiCommand, so a plain static is fine.
 static GLOBAL_MARGIN: Mutex<i32> = Mutex::new(DEFAULT_MARGIN);
 
+/// Extra gap (physical px) between the taskbar's left edge and the first
+/// left-side instance (`left`), and between the notification area and the
+/// first right-side instance (`right`). Both default to `0`; set at runtime
+/// with `set_edge_margins` to dodge other tools embedded in the taskbar
+/// (e.g. TrafficMonitor). Horizontal taskbars only.
+#[derive(Clone, Copy)]
+struct EdgeMargins {
+    left: i32,
+    right: i32,
+}
+
+static GLOBAL_EDGE_MARGINS: Mutex<EdgeMargins> =
+    Mutex::new(EdgeMargins { left: 0, right: 0 });
+
+fn edge_margins() -> EdgeMargins {
+    *GLOBAL_EDGE_MARGINS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn margin() -> i32 {
     *GLOBAL_MARGIN.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -1038,8 +1078,10 @@ fn relayout_all() {
 
     if horizontal {
         let m = margin();
-        // Right side: stack leftward from the notification area.
-        let mut cursor = taskbar.right_edge_for_right();
+        let em = edge_margins();
+        // Right side: stack leftward from the notification area, leaving the
+        // user's right edge margin before it.
+        let mut cursor = taskbar.right_edge_for_right() - em.right;
         for id in &right_ids {
             if let Some(inst) = guard.get_mut(id) {
                 if !inst.visible {
@@ -1055,8 +1097,9 @@ fn relayout_all() {
                 paint_inst(inst);
             }
         }
-        // Left side: stack rightward from the taskbar's left edge.
-        let mut cursor = taskbar.left_edge_for_left();
+        // Left side: stack rightward from the taskbar's left edge, leaving
+        // the user's left edge margin after it.
+        let mut cursor = taskbar.left_edge_for_left() + em.left;
         for id in &left_ids {
             if let Some(inst) = guard.get_mut(id) {
                 if !inst.visible {

@@ -135,6 +135,30 @@ pub struct SetMarginRequest {
     pub margin: i32,
 }
 
+/// Set extra edge margins for the left/right instance groups, in physical
+/// pixels.
+///
+/// `left` is the extra gap between the taskbar's left edge and the first
+/// left-side instance (shifting the whole left group rightward); `right` is
+/// the extra gap between the notification area and the first right-side
+/// instance (shifting the whole right group leftward). Useful for dodging
+/// other tools embedded in the taskbar, such as TrafficMonitor. Both default
+/// to `0` and are clamped to `>= 0`. Horizontal taskbars only — ignored on
+/// vertical taskbars. A field set to `None` (omitted) keeps the current
+/// value.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetEdgeMarginsRequest {
+    /// Extra gap (physical px) after the taskbar's left edge for the
+    /// left-side group. `None` keeps the current value.
+    #[serde(default)]
+    pub left: Option<i32>,
+    /// Extra gap (physical px) before the notification area for the
+    /// right-side group. `None` keeps the current value.
+    #[serde(default)]
+    pub right: Option<i32>,
+}
+
 /// How the text of a taskbar line should be painted.
 ///
 /// `default` keeps the system `textColor` (follows light/dark mode). `solid`

@@ -41,6 +41,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::set_side,
             commands::set_order,
             commands::set_margin,
+            commands::set_edge_margins,
             commands::set_colors,
             commands::set_bold,
             commands::set_alignment,
