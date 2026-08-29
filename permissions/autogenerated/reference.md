@@ -1,13 +1,13 @@
 ## Default Permission
 
-Allows all multiline-taskband commands.
+Default permissions for the multiline-taskband plugin (core rendering + read-only queries). High-impact commands (remove, menu injection, popup window control) are intentionally NOT included — grant them explicitly, e.g. `multiline-taskband:allow-remove`.
 
 #### This default permission set includes the following:
 
 - `allow-create`
-- `allow-remove`
 - `allow-set-text`
 - `allow-set-font-sizes`
+- `allow-set-font-family`
 - `allow-set-padding`
 - `allow-set-side`
 - `allow-set-order`
@@ -18,12 +18,7 @@ Allows all multiline-taskband commands.
 - `allow-set-visible`
 - `allow-rect`
 - `allow-is-visible`
-- `allow-set-popup-window`
 - `allow-set-auto-popup`
-- `allow-open-popup`
-- `allow-close-popup`
-- `allow-toggle-popup`
-- `allow-set-menu`
 
 ## Permission Table
 
@@ -290,6 +285,32 @@ Enables the set_colors command without any pre-configured scope.
 <td>
 
 Denies the set_colors command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:allow-set-font-family`
+
+</td>
+<td>
+
+Enables the set_font_family command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-set-font-family`
+
+</td>
+<td>
+
+Denies the set_font_family command without any pre-configured scope.
 
 </td>
 </tr>

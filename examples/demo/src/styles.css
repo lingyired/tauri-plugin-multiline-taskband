@@ -1,7 +1,7 @@
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, "Microsoft YaHei", sans-serif;
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 16px;
+  line-height: 24px;
   font-weight: 400;
 
   color: #0f0f0f;
@@ -15,14 +15,26 @@
 }
 
 .container {
-  margin: 0 auto;
-  padding: 24px 20px 48px;
-  max-width: 760px;
+  margin: 0;
+  padding-top: 8vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
 }
 
 .muted {
   opacity: 0.6;
   font-size: 13px;
+}
+
+.row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
 }
 
 h1 {
@@ -39,14 +51,14 @@ select,
 button {
   border-radius: 8px;
   border: 1px solid transparent;
-  padding: 0.5em 0.8em;
-  font-size: 0.95em;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
   font-weight: 500;
   font-family: inherit;
   color: #0f0f0f;
   background-color: #ffffff;
   transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
   outline: none;
 }
 
@@ -63,33 +75,22 @@ button:active {
   background-color: #e8e8e8;
 }
 
-input[type="checkbox"] {
-  box-shadow: none;
-}
-
-input[type="color"] {
-  padding: 2px;
-  min-height: 34px;
-  background-color: transparent;
-  border: 1px solid #ccc;
-  cursor: pointer;
-}
-
 .card {
   margin: 1rem auto;
-  padding: 1.25rem 1.5rem;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 480px;
   border-radius: 12px;
   background-color: #ffffff;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  text-align: left;
 }
 
-.row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 0.9rem;
+.card h2 {
+  text-align: center;
 }
 
+/* Create-instance form */
 .create-form {
   display: flex;
   flex-wrap: wrap;
@@ -98,7 +99,12 @@ input[type="color"] {
 
 .create-form input {
   flex: 1;
-  min-width: 120px;
+  min-width: 110px;
+}
+
+.create-form select {
+  padding: 0.5em 0.8em;
+  font-size: 0.9em;
 }
 
 .inline-label {
@@ -108,7 +114,7 @@ input[type="color"] {
 }
 
 /* ---------------------------------------------------------------------------
- * Instance cards
+ * Instance list (aligned with the multiline-menubar demo)
  * ------------------------------------------------------------------------- */
 
 .instance-list {
@@ -117,192 +123,91 @@ input[type="color"] {
   padding: 0;
   display: flex;
   flex-direction: column;
+  gap: 8px;
+}
+
+.instance-row {
+  display: flex;
+  align-items: center;
   gap: 12px;
-}
-
-/* ---------------------------------------------------------------------------
- * Instance management list (drag re-order / side / visibility)
- * ------------------------------------------------------------------------- */
-
-.manage-heading {
-  margin: 20px 0 4px;
-  font-size: 15px;
-}
-
-.manage-list {
-  list-style: none;
-  margin: 8px 0 4px;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.manage-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(128, 128, 128, 0.06);
-  border: 1px solid rgba(128, 128, 128, 0.15);
-  cursor: grab;
-}
-
-.manage-row.dragging {
-  opacity: 0.5;
-  border-color: #396cd8;
-}
-
-.manage-row.drag-over {
-  border-color: #396cd8;
-  background: rgba(57, 108, 216, 0.12);
-  outline: 1px dashed #396cd8;
-  outline-offset: -2px;
-}
-
-.manage-row.row-hidden {
-  opacity: 0.45;
-}
-
-.drag-handle {
-  cursor: grab;
-  color: #888;
-  user-select: none;
-  font-size: 14px;
-  letter-spacing: -2px;
-}
-
-.drag-handle-inline {
-  color: #888;
-}
-
-.manage-name {
-  font-weight: 600;
-  min-width: 64px;
-  font-variant-numeric: tabular-nums;
-}
-
-.manage-row select.manage-side {
-  padding: 0.2em 0.4em;
-  box-shadow: none;
-  border: 1px solid #ccc;
-  font-size: 12px;
-}
-
-.instance-card {
-  padding: 12px 14px;
+  padding: 10px 14px;
   border-radius: 10px;
-  background: rgba(128, 128, 128, 0.06);
-  border: 1px solid rgba(128, 128, 128, 0.15);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.instance-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  background: rgba(128, 128, 128, 0.07);
+  border: 1px solid rgba(128, 128, 128, 0.12);
 }
 
 .instance-name {
   font-weight: 600;
+  min-width: 56px;
   font-variant-numeric: tabular-nums;
-  min-width: 64px;
+  text-align: left;
 }
 
-.instance-head select.side-select {
+.instance-text {
+  flex: 1;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+/* left/right side switcher — taskband-specific */
+.instance-side {
   padding: 0.2em 0.4em;
+  font-size: 12px;
   box-shadow: none;
   border: 1px solid #ccc;
-  font-size: 12px;
+  background-color: #fff;
+  color: #0f0f0f;
 }
 
-.move-btn {
-  padding: 0.1em 0.45em;
-  font-size: 13px;
-  line-height: 1.2;
-  min-width: 26px;
-}
-
-.badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(128, 128, 128, 0.15);
-  color: #555;
-}
-
-.badge.order-badge {
-  background: rgba(255, 149, 0, 0.18);
-  color: #b05f00;
-  font-variant-numeric: tabular-nums;
-}
-
-.badge.ready-badge.ready {
-  background: rgba(52, 199, 89, 0.2);
-  color: #1e7a3a;
-}
-
-.remove-btn {
-  margin-left: auto;
-  padding: 0.25em 0.7em;
-  font-size: 12px;
-  color: #b00020;
-  background: rgba(176, 0, 32, 0.08);
-}
-
-.field-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.field-row > label {
-  font-size: 12px;
-  color: #666;
-  min-width: 52px;
-}
-
-.field-row input[type="text"],
-.field-row input:not([type]),
-.field-row input[type="number"] {
-  width: 90px;
-  padding: 0.3em 0.6em;
-  box-shadow: none;
-  border: 1px solid #ccc;
-  font-size: 0.9em;
-}
-
-.field-row select {
-  padding: 0.3em 0.6em;
-  box-shadow: none;
-  border: 1px solid #ccc;
-  font-size: 0.9em;
-}
-
-.mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #666;
-}
-
-.align-lbl {
-  margin-left: 8px;
-}
-
-.rect-btn {
+/* "settings" button that opens the popup for this instance */
+.settings-btn {
   padding: 0.3em 0.8em;
   font-size: 12px;
+  white-space: nowrap;
 }
 
-.rect-out {
+/* Remove button — runtime-created instances only (presets are fixed) */
+.remove-btn {
+  padding: 0.2em 0.55em;
   font-size: 12px;
-  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #b3261e;
+  background: transparent;
+  box-shadow: none;
+  border: 1px solid rgba(179, 38, 30, 0.35);
+  border-radius: 6px;
+}
+
+.remove-btn:hover {
+  border-color: #b3261e;
+  background: rgba(179, 38, 30, 0.08);
+}
+
+.remove-btn:active {
+  background: rgba(179, 38, 30, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  .remove-btn {
+    color: #ff6b5e;
+    border-color: rgba(255, 107, 94, 0.4);
+    background: transparent;
+  }
+
+  .remove-btn:hover {
+    background: rgba(255, 107, 94, 0.12);
+  }
+}
+
+.instance-row.row-hidden {
+  opacity: 0.45;
+}
+
+#click-log {
+  text-align: center;
 }
 
 /* Toggle switch */
@@ -373,38 +278,8 @@ input[type="color"] {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   }
 
-  .field-row > label,
-  .mini,
-  .badge,
-  .inline-label {
-    color: #aaa;
-  }
-
-  .badge.order-badge {
-    background: rgba(255, 149, 0, 0.25);
-    color: #ffb84d;
-  }
-
-  .instance-head select.side-select,
-  .manage-row select.manage-side,
-  .field-row input[type="text"],
-  .field-row input:not([type]),
-  .field-row input[type="number"],
-  .field-row select {
+  .instance-side {
+    background-color: #0f0f0f;
     border-color: #555;
-  }
-
-  .drag-handle,
-  .drag-handle-inline {
-    color: #999;
-  }
-
-  input[type="color"] {
-    border-color: #555;
-  }
-
-  .remove-btn {
-    color: #ff7a8a;
-    background: rgba(176, 0, 32, 0.2);
   }
 }

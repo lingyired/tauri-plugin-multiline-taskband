@@ -5,6 +5,7 @@
 # Node
 /node_modules/
 /dist-js/
+/dist/
 examples/demo/node_modules/
 examples/demo/package-lock.json
 examples/demo/pnpm-lock.yaml

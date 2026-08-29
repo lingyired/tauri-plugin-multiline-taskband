@@ -32,6 +32,20 @@ export interface FontSizesOptions {
 }
 
 /**
+ * Set the font family of the top and/or bottom line of an instance. Each line
+ * is independent: pass `null` (or `''`) for a line to reset it to the system
+ * default font. Unknown family names fall back silently, matching the menubar
+ * plugin's semantics.
+ */
+export interface SetFontFamilyOptions {
+  id: string
+  /** Font family for the top line, or `null`/`''` for the system font. */
+  top: string | null
+  /** Font family for the bottom line, or `null`/`''` for the system font. */
+  bottom: string | null
+}
+
+/**
  * Per-instance horizontal padding, in physical pixels. The gap between the
  * left/right edge of the instance window and its text; `left` and `right`
  * can differ. Defaults to `4`.
@@ -151,12 +165,31 @@ export interface PopupEvent {
 }
 
 /**
- * A right-click context-menu item descriptor. `item` selections are reported
- * back through {@link onMenuSelection}; `separator` inserts a divider.
+ * A right-click context-menu item descriptor. Mirrors the menubar plugin's
+ * type one-for-one, so the same menu tree works on both platforms: `item`
+ * (plain action), `check` (toggle), `separator` and `submenu` (nested tree).
+ * `item` and `check` selections are reported back through
+ * {@link onMenuSelection}.
  */
 export type MenuItemDescriptor =
-  | { type: 'item'; id: string; text: string; enabled?: boolean }
+  | {
+      type: 'item'
+      id: string
+      text: string
+      accelerator?: string
+      /** Whether the item is clickable. Defaults to `true`. */
+      enabled?: boolean
+    }
+  | {
+      type: 'check'
+      id: string
+      text: string
+      /** Initial checked state. Defaults to `false`. */
+      checked?: boolean
+      accelerator?: string
+    }
   | { type: 'separator' }
+  | { type: 'submenu'; text: string; items: MenuItemDescriptor[] }
 
 /** Attach/detach the right-click context menu of an instance. */
 export interface SetMenuOptions {
@@ -171,6 +204,8 @@ export interface MenuSelectionEvent {
   id: string
   /** The `id` of the selected menu item. */
   itemId: string
+  /** Present only for `check` items: the state after the toggle. */
+  checked?: boolean
 }
 
 export interface ReadyEvent {
@@ -209,6 +244,17 @@ export async function setText(options: SetTextOptions): Promise<void> {
 
 export async function setFontSizes(options: FontSizesOptions): Promise<void> {
   return await invoke('plugin:multiline-taskband|set_font_sizes', {
+    payload: options,
+  })
+}
+
+/**
+ * Set the font family of the top and/or bottom line of an instance. Pass
+ * `null`/`''` for a line to reset it to the system font. See
+ * {@link SetFontFamilyOptions}.
+ */
+export async function setFontFamily(options: SetFontFamilyOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_font_family', {
     payload: options,
   })
 }

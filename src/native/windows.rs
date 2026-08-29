@@ -45,11 +45,16 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
-use tauri::menu::{ContextMenu as TauriContextMenu, Menu as TauriMenu, MenuItem as TauriMenuItem, MenuEvent, PredefinedMenuItem as TauriPredefined};
+use tauri::menu::{
+    CheckMenuItem as TauriCheckMenuItem, ContextMenu as TauriContextMenu, Menu as TauriMenu,
+    MenuItem as TauriMenuItem, MenuEvent, MenuItemKind as TauriMenuItemKind,
+    PredefinedMenuItem as TauriPredefined, SubmenuBuilder as TauriSubmenuBuilder,
+};
 use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent, Wry};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::Registry::*;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::System::WindowsProgramming::MulDiv;
 use windows_sys::Win32::UI::Accessibility::*;
@@ -88,6 +93,7 @@ enum UiCommand {
     Remove { id: String },
     SetText { id: String, top: String, bottom: String },
     SetFontSizes { id: String, top: f64, bottom: f64 },
+    SetFontFamily { id: String, top: Option<String>, bottom: Option<String> },
     SetPadding { id: String, left: i32, right: i32 },
     SetSide { id: String, side: Side },
     SetOrder { id: String, order: u64 },
@@ -196,6 +202,9 @@ struct Inst {
     /// Font sizes in points.
     top_size: f64,
     bottom_size: f64,
+    /// Font family per line; `None` = system default font.
+    top_face: Option<String>,
+    bottom_face: Option<String>,
     /// Horizontal padding in physical pixels (gap between window edge and text).
     pad_left: i32,
     pad_right: i32,
@@ -228,6 +237,8 @@ impl Default for Inst {
             // way to tune the vertical emphasis (no layout presets).
             top_size: 11.0,
             bottom_size: 11.0,
+            top_face: None,
+            bottom_face: None,
             pad_left: PAD,
             pad_right: PAD,
             top_color: ColorStyle::Default,
@@ -268,6 +279,32 @@ pub fn set_font_sizes(id: String, top: f64, bottom: f64) -> crate::Result<()> {
     start_if_needed();
     post(UiCommand::SetFontSizes { id, top, bottom });
     Ok(())
+}
+
+pub fn set_font_family(
+    id: String,
+    top: Option<String>,
+    bottom: Option<String>,
+) -> crate::Result<()> {
+    start_if_needed();
+    // Defensive: reject embedded NULs (they would truncate `lfFaceName`),
+    // mirroring the menubar plugin's defensive style.
+    for face in [&top, &bottom].into_iter().flatten() {
+        if face.contains('\0') {
+            return Err(crate::Error::InvalidArgument(
+                "font family must not contain NUL".into(),
+            ));
+        }
+    }
+    post(UiCommand::SetFontFamily { id, top, bottom });
+    Ok(())
+}
+
+/// `""` means the system font (reset), matching the menubar plugin's
+/// `null`/`""` semantics. Stored as `None` so rendering can branch on
+/// `Option::is_none` and `as_deref()` cleanly.
+fn normalize_face(face: Option<String>) -> Option<String> {
+    face.filter(|s| !s.is_empty())
 }
 
 pub fn set_padding(id: String, left: i32, right: i32) -> crate::Result<()> {
@@ -376,7 +413,7 @@ pub fn toggle_popup(id: String) -> crate::Result<()> {
 
 /// Attach (or detach, with `None`) the right-click context menu of an
 /// instance. Menu selections are emitted as `multiline-taskband://{id}//menu`
-/// with `{ id, itemId }`.
+/// with `{ id, itemId }`, plus `checked` for `check` items.
 pub fn set_menu(id: String, items: Option<Vec<MenuItemDescriptor>>) -> crate::Result<()> {
     let app = APP.get().ok_or(crate::Error::UnsupportedPlatform)?;
     install_menu_event_handler(app);
@@ -462,6 +499,16 @@ fn keep_on_top() {
     let taskbar = *TASKBAR_HWND.lock().unwrap_or_else(|e| e.into_inner());
     if taskbar == 0 {
         return;
+    }
+    // The 500 ms timer doubles as a cheap theme watcher: when the system
+    // light/dark setting flips, repaint every instance so `default`-coloured
+    // lines follow the taskbar (light → dark text, dark → white text).
+    let light = taskbar_light_theme();
+    let mut last = LAST_LIGHT_THEME.lock().unwrap_or_else(|e| e.into_inner());
+    if *last != Some(light) {
+        *last = Some(light);
+        drop(last);
+        paint_all();
     }
     if let Some(map) = INSTANCES.get() {
         let guard = map.lock().unwrap_or_else(|e| e.into_inner());
@@ -603,6 +650,17 @@ fn handle_command(cmd: UiCommand) {
             drop(guard);
             relayout_all();
         }
+        UiCommand::SetFontFamily { id, top, bottom } => {
+            if let Some(inst) = guard.get_mut(&id) {
+                inst.top_face = normalize_face(top);
+                inst.bottom_face = normalize_face(bottom);
+            }
+            drop(guard);
+            // Changing the font changes the text width, so neighbours must be
+            // re-measured and re-spaced — a plain repaint would leave the
+            // window width stale.
+            relayout_all();
+        }
         UiCommand::SetPadding { id, left, right } => {
             if let Some(inst) = guard.get_mut(&id) {
                 inst.pad_left = left;
@@ -693,6 +751,45 @@ const fn wide_const(s: &str) -> [u16; 32] {
         i += 1;
     }
     out
+}
+
+/// Runtime wide (UTF-16 + NUL) string for registry paths that don't fit the
+/// fixed 32-char `wide_const`.
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Whether the taskbar uses the light theme. Mirrors TrafficMonitor's
+/// `CWindowsSettingHelper::CheckWindows10LightTheme`: reads
+/// `SystemUsesLightTheme` under
+/// `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`.
+///
+/// This is what the `default` text colour keys off. `GetSysColor(COLOR_BTNTEXT)`
+/// cannot be trusted on Win11 — it stays black even when the taskbar is dark,
+/// which makes `default` text invisible on a dark taskbar.
+fn taskbar_light_theme() -> bool {
+    let mut key: HKEY = 0;
+    let path = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";
+    let ok = unsafe {
+        RegOpenKeyExW(HKEY_CURRENT_USER, wide(path).as_ptr(), 0, KEY_READ, &mut key)
+    };
+    if ok != 0 {
+        return true; // default to light on any failure
+    }
+    let mut data: u32 = 0;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    let r = unsafe {
+        RegQueryValueExW(
+            key,
+            wide("SystemUsesLightTheme").as_ptr(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut data as *mut u32 as *mut u8,
+            &mut size,
+        )
+    };
+    unsafe { RegCloseKey(key) };
+    r == 0 && data != 0
 }
 
 fn register_class() {
@@ -1117,19 +1214,29 @@ fn pt_to_px(pt: f64, dpi: i32) -> i32 {
 /// Measure an instance's window size from its two lines (no drawing).
 fn measure(inst: &Inst) -> (i32, i32) {
     let d = dpi();
-    let (tw, th) = measure_text(&inst.top, pt_to_px(inst.top_size, d), inst.top_bold);
-    let (bw, bh) = measure_text(&inst.bottom, pt_to_px(inst.bottom_size, d), inst.bottom_bold);
+    let (tw, th) = measure_text(
+        &inst.top,
+        pt_to_px(inst.top_size, d),
+        inst.top_bold,
+        inst.top_face.as_deref(),
+    );
+    let (bw, bh) = measure_text(
+        &inst.bottom,
+        pt_to_px(inst.bottom_size, d),
+        inst.bottom_bold,
+        inst.bottom_face.as_deref(),
+    );
     let w = tw.max(bw) + inst.pad_left + inst.pad_right;
     let h = th + LINE_GAP + bh;
     (w.max(1), h.max(1))
 }
 
-fn measure_text(text: &str, size_px: i32, bold: bool) -> (i32, i32) {
+fn measure_text(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i32, i32) {
     let hdc = unsafe { CreateCompatibleDC(0) };
     if hdc == 0 {
         return ((text.len() as i32 * size_px).max(1), size_px.max(1));
     }
-    let font = make_font(size_px, bold);
+    let font = make_font(size_px, bold, face);
     let old = unsafe { SelectObject(hdc, font) };
     unsafe { SetBkMode(hdc, TRANSPARENT as i32) };
     let wtext = to_wide(text);
@@ -1155,9 +1262,9 @@ fn measure_text(text: &str, size_px: i32, bold: bool) -> (i32, i32) {
 /// coverage (alpha) buffer. Because the text is white on black, every channel
 /// equals the coverage, so the red channel *is* the alpha — giving clean
 /// anti-aliased edges we can recolour to any target colour.
-fn render_line_alpha(text: &str, size_px: i32, bold: bool) -> (i32, i32, Vec<u8>) {
+fn render_line_alpha(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i32, i32, Vec<u8>) {
     let hdc = unsafe { CreateCompatibleDC(0) };
-    let font = make_font(size_px, bold);
+    let font = make_font(size_px, bold, face);
     let old = unsafe { SelectObject(hdc, font) };
     unsafe { SetBkMode(hdc, TRANSPARENT as i32) };
 
@@ -1218,8 +1325,19 @@ fn render_line_alpha(text: &str, size_px: i32, bold: bool) -> (i32, i32, Vec<u8>
     (w, h, alpha)
 }
 
-fn make_font(size_px: i32, bold: bool) -> HFONT {
+fn make_font(size_px: i32, bold: bool, face: Option<&str>) -> HFONT {
     let weight: i32 = if bold { FW_BOLD as i32 } else { FW_NORMAL as i32 };
+    // `LF_FACESIZE` is 32 u16s: at most 31 characters plus the NUL terminator.
+    // All-zero (the default below) selects the system default font. Over-long
+    // names are truncated to 31 chars without panicking, and unknown names
+    // silently fall back to the system font via GDI — both matching the
+    // menubar plugin's behaviour.
+    let mut face_name = [0u16; 32];
+    if let Some(face) = face {
+        let wide = to_wide(face); // always NUL-terminated
+        let n = wide.len().min(31);
+        face_name[..n].copy_from_slice(&wide[..n]);
+    }
     let lf = LOGFONTW {
         lfHeight: -(size_px.max(1)),
         lfWidth: 0,
@@ -1234,7 +1352,7 @@ fn make_font(size_px: i32, bold: bool) -> HFONT {
         lfClipPrecision: CLIP_DEFAULT_PRECIS,
         lfQuality: ANTIALIASED_QUALITY,
         lfPitchAndFamily: DEFAULT_PITCH,
-        lfFaceName: [0u16; 32],
+        lfFaceName: face_name,
     };
     unsafe { CreateFontIndirectW(&lf) }
 }
@@ -1257,10 +1375,14 @@ fn create_dib(hdc: HDC, w: i32, h: i32) -> (HBITMAP, *mut c_void) {
 fn resolve_color(c: &ColorStyle) -> (u8, u8, u8) {
     match c {
         ColorStyle::Default => {
-            // COLOR_BTNTEXT (18) = the taskbar's default text colour, which
-            // follows the system light/dark theme.
-            let v = unsafe { GetSysColor(COLOR_BTNTEXT) };
-            ((v & 0xFF) as u8, ((v >> 8) & 0xFF) as u8, ((v >> 16) & 0xFF) as u8)
+            // The taskbar's default text colour: light taskbar → dark text,
+            // dark taskbar → white text. (GetSysColor(COLOR_BTNTEXT) stays
+            // black on Win11 regardless of theme — see taskbar_light_theme.)
+            if taskbar_light_theme() {
+                (0, 0, 0)
+            } else {
+                (255, 255, 255)
+            }
         }
         ColorStyle::Solid { value } => parse_hex(value),
     }
@@ -1290,12 +1412,37 @@ fn paint(id: &str) {
     }
 }
 
+/// Last observed taskbar theme (light/dark), so the keep_on_top timer can
+/// detect flips and repaint `default`-coloured instances.
+static LAST_LIGHT_THEME: Mutex<Option<bool>> = Mutex::new(None);
+
+/// Repaint every instance (used when the system theme flips so `default`
+/// text colour follows the taskbar's appearance).
+fn paint_all() {
+    if let Some(map) = INSTANCES.get() {
+        let mut guard = map.lock().unwrap_or_else(|e| e.into_inner());
+        for inst in guard.values_mut() {
+            paint_inst(inst);
+        }
+    }
+}
+
 fn paint_inst(inst: &mut Inst) {
     let d = dpi();
     let top_sz = pt_to_px(inst.top_size, d);
     let bot_sz = pt_to_px(inst.bottom_size, d);
-    let (tw, th, top_alpha) = render_line_alpha(&inst.top, top_sz, inst.top_bold);
-    let (bw, bh, bot_alpha) = render_line_alpha(&inst.bottom, bot_sz, inst.bottom_bold);
+    let (tw, th, top_alpha) = render_line_alpha(
+        &inst.top,
+        top_sz,
+        inst.top_bold,
+        inst.top_face.as_deref(),
+    );
+    let (bw, bh, bot_alpha) = render_line_alpha(
+        &inst.bottom,
+        bot_sz,
+        inst.bottom_bold,
+        inst.bottom_face.as_deref(),
+    );
 
     let w = inst.w.max(1);
     let h = inst.h.max(1);
@@ -1660,6 +1807,8 @@ fn instance_state_json(id: &str) -> Option<serde_json::Value> {
         "bottom": inst.bottom,
         "topSize": inst.top_size,
         "bottomSize": inst.bottom_size,
+        "topFontFamily": inst.top_face,
+        "bottomFontFamily": inst.bottom_face,
         "leftPadding": inst.pad_left,
         "rightPadding": inst.pad_right,
         "side": inst.side,
@@ -1686,20 +1835,147 @@ fn build_menu(
     items: &[MenuItemDescriptor],
 ) -> crate::Result<TauriMenu<Wry>> {
     let menu = TauriMenu::with_id(app, inst_id)?;
+    append_menu_items(app, inst_id, items, &menu)?;
+    Ok(menu)
+}
+
+/// Append a descriptor tree to `menu`, recursing into submenus.
+fn append_menu_items(
+    app: &tauri::AppHandle<Wry>,
+    inst_id: &str,
+    items: &[MenuItemDescriptor],
+    menu: &TauriMenu<Wry>,
+) -> crate::Result<()> {
     for item in items {
         match item {
-            MenuItemDescriptor::Item { id, text, enabled } => {
+            MenuItemDescriptor::Item {
+                id,
+                text,
+                accelerator,
+                enabled,
+            } => {
                 let full_id = format!("{inst_id}{MENU_ID_SEPARATOR}{id}");
-                let mi = TauriMenuItem::with_id(app, &full_id, text, enabled.unwrap_or(true), None::<&str>)?;
+                let mi = TauriMenuItem::with_id(
+                    app,
+                    &full_id,
+                    text,
+                    enabled.unwrap_or(true),
+                    accelerator.as_deref(),
+                )?;
+                menu.append(&mi)?;
+            }
+            MenuItemDescriptor::Check {
+                id,
+                text,
+                checked,
+                accelerator,
+            } => {
+                let full_id = format!("{inst_id}{MENU_ID_SEPARATOR}{id}");
+                let mi = TauriCheckMenuItem::with_id(
+                    app,
+                    &full_id,
+                    text,
+                    true,
+                    checked.unwrap_or(false),
+                    accelerator.as_deref(),
+                )?;
                 menu.append(&mi)?;
             }
             MenuItemDescriptor::Separator => {
                 let sep = TauriPredefined::separator(app)?;
                 menu.append(&sep)?;
             }
+            MenuItemDescriptor::Submenu { text, items } => {
+                let sub = build_submenu(app, inst_id, text, items)?;
+                menu.append(&sub)?;
+            }
         }
     }
-    Ok(menu)
+    Ok(())
+}
+
+/// Build a nested submenu, recursing with the same `{instance}::{action}` id
+/// scheme so selections inside it are routed like any other item.
+fn build_submenu(
+    app: &tauri::AppHandle<Wry>,
+    inst_id: &str,
+    text: &str,
+    items: &[MenuItemDescriptor],
+) -> crate::Result<tauri::menu::Submenu<Wry>> {
+    let mut builder = TauriSubmenuBuilder::new(app, text);
+    for item in items {
+        match item {
+            MenuItemDescriptor::Item {
+                id,
+                text,
+                accelerator,
+                enabled,
+            } => {
+                let full_id = format!("{inst_id}{MENU_ID_SEPARATOR}{id}");
+                let mi = TauriMenuItem::with_id(
+                    app,
+                    &full_id,
+                    text,
+                    enabled.unwrap_or(true),
+                    accelerator.as_deref(),
+                )?;
+                builder = builder.item(&mi);
+            }
+            MenuItemDescriptor::Check {
+                id,
+                text,
+                checked,
+                accelerator,
+            } => {
+                let full_id = format!("{inst_id}{MENU_ID_SEPARATOR}{id}");
+                let mi = TauriCheckMenuItem::with_id(
+                    app,
+                    &full_id,
+                    text,
+                    true,
+                    checked.unwrap_or(false),
+                    accelerator.as_deref(),
+                )?;
+                builder = builder.item(&mi);
+            }
+            MenuItemDescriptor::Separator => {
+                builder = builder.separator();
+            }
+            MenuItemDescriptor::Submenu { text, items } => {
+                let sub = build_submenu(app, inst_id, text, items)?;
+                builder = builder.item(&sub);
+            }
+        }
+    }
+    Ok(builder.build()?)
+}
+
+/// Current checked state of a check item, or `None` if the action id does not
+/// belong to a check item (or the menu is gone).
+fn menu_item_checked(inst: &str, action: &str) -> Option<bool> {
+    fn walk(items: &[TauriMenuItemKind<Wry>], full_id: &str) -> Option<bool> {
+        for item in items {
+            match item {
+                TauriMenuItemKind::Check(check) if check.id().0 == full_id => {
+                    return check.is_checked().ok();
+                }
+                TauriMenuItemKind::Submenu(sub) => {
+                    if let Ok(children) = sub.items() {
+                        if let Some(found) = walk(&children, full_id) {
+                            return Some(found);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    let menus = MENUS.lock().ok()?;
+    let menu = menus.as_ref()?.get(inst)?;
+    let items = menu.items().ok()?;
+    walk(&items, &format!("{inst}{MENU_ID_SEPARATOR}{action}"))
 }
 
 /// Install the global menu-event listener once. Selections from any instance's
@@ -1720,9 +1996,17 @@ fn install_menu_event_handler(app: &tauri::AppHandle<Wry>) {
         let Some((inst, action)) = id.split_once(MENU_ID_SEPARATOR) else {
             return; // not one of ours
         };
+        // `checked` is only present for `check` items; by the time the event
+        // fires the native layer has already toggled the new state.
+        let payload = match menu_item_checked(inst, action) {
+            Some(checked) => {
+                serde_json::json!({ "id": inst, "itemId": action, "checked": checked })
+            }
+            None => serde_json::json!({ "id": inst, "itemId": action }),
+        };
         let _ = app.emit(
             format!("multiline-taskband://{inst}//menu").as_str(),
-            serde_json::json!({ "id": inst, "itemId": action }),
+            payload,
         );
     });
 }

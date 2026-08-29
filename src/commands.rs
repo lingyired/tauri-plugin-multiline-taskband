@@ -42,6 +42,15 @@ pub(crate) async fn set_font_sizes<R: Runtime>(
 }
 
 #[command]
+pub(crate) async fn set_font_family<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetFontFamilyRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband()
+        .set_font_family(payload.id, payload.top, payload.bottom)
+}
+
+#[command]
 pub(crate) async fn set_padding<R: Runtime>(
     app: AppHandle<R>,
     payload: SetPaddingRequest,

@@ -67,6 +67,21 @@ pub struct FontSizesRequest {
     pub bottom: f64,
 }
 
+/// Per-line font family override. Each line is independent: `None`/`""`
+/// means the system default font (reset), mirroring the menubar plugin's
+/// `set_font_family` semantics so the same frontend code works on both.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetFontFamilyRequest {
+    pub id: String,
+    /// Font family for the top line; `None`/`""` = system default.
+    #[serde(default)]
+    pub top: Option<String>,
+    /// Font family for the bottom line; `None`/`""` = system default.
+    #[serde(default)]
+    pub bottom: Option<String>,
+}
+
 /// Per-instance horizontal padding, in physical pixels.
 ///
 /// The gap between the left/right edge of the instance window and its text.
@@ -187,8 +202,9 @@ pub struct SetAutoPopupRequest {
 
 /// A context-menu item descriptor, shown on right click of an instance.
 ///
-/// Mirrors the menubar plugin's `MenuItemDescriptor` (subset: `item` and
-/// `separator`; check/submenu are not supported on the taskbar yet).
+/// Mirrors the menubar plugin's `MenuItemDescriptor` one-for-one, so the same
+/// menu tree can be handed to either plugin: `item`, `check`, `separator` and
+/// `submenu` are all supported.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum MenuItemDescriptor {
@@ -196,13 +212,29 @@ pub enum MenuItemDescriptor {
         id: String,
         text: String,
         #[serde(default)]
+        accelerator: Option<String>,
+        /// Whether the item is clickable. Defaults to `true`.
+        #[serde(default)]
         enabled: Option<bool>,
     },
+    Check {
+        id: String,
+        text: String,
+        /// Initial checked state. Defaults to `false`.
+        #[serde(default)]
+        checked: Option<bool>,
+        #[serde(default)]
+        accelerator: Option<String>,
+    },
     Separator,
+    Submenu {
+        text: String,
+        items: Vec<MenuItemDescriptor>,
+    },
 }
 
 /// Attach/detach the right-click context menu of an instance. Pass `items:
-/// None` to detach.
+/// None` to detach, mirroring Tauri's `setMenu(null)` semantics.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetMenuRequest {

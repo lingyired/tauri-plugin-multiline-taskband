@@ -36,6 +36,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::remove,
             commands::set_text,
             commands::set_font_sizes,
+            commands::set_font_family,
             commands::set_padding,
             commands::set_side,
             commands::set_order,

@@ -1,504 +1,388 @@
-// Multiline Taskband demo frontend — drives every plugin API through
-// window.__TAURI__ (withGlobalTauri: true), no bundler needed.
+// Multiline Taskband demo frontend — mirrors the multiline-menubar demo's UX:
+// a fixed set of preset instances, each listed as one compact row (name, text,
+// side, settings, visibility). All per-instance appearance editing happens in
+// the popup window opened from the taskbar item (or the row's Settings button).
+//
+// Persistence: every setting the user changes (global margin, per-instance
+// text/appearance/side, shown/hidden, runtime-created instances) is written
+// to localStorage right away (see settings.js) and re-applied to the plugin
+// on the next launch, so the taskbar looks exactly like it did last session.
+import {
+  DEFAULT_MARGIN,
+  PRESETS,
+  instanceDefaults,
+  loadSettings,
+  saveSettings,
+} from "./settings.js";
+
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 // ---------------------------------------------------------------------------
-// 5 preset instances: 2 on the left edge, 3 on the right edge.
+// 5 preset instances (mb-1 … mb-5): 2 on the left edge, 3 on the right edge.
+// Each shows its own id on both lines, so we can talk about "mb-3" without
+// ambiguity — same convention as the multiline-menubar demo. The list lives
+// in settings.js so the popup's persistence path shares the same canon.
 // ---------------------------------------------------------------------------
-const PRESETS = [
-  { id: "left-1", side: "left", top: "总收益", bottom: "+5.67%" },
-  { id: "left-2", side: "left", top: "成本", bottom: "¥12,340" },
-  { id: "right-1", side: "right", top: "A股", bottom: "+1.23%" },
-  { id: "right-2", side: "right", top: "QDII", bottom: "-0.40%" },
-  { id: "right-3", side: "right", top: "黄金", bottom: "+0.81%" },
-];
+
+// Single source of truth for the demo's settings; saved to localStorage on
+// every mutation and re-applied to the plugin on boot.
+let settings = loadSettings(PRESETS);
 
 const created = new Set(); // ids whose overlay window exists on the taskbar
-const readyIds = new Set(); // ids that have emitted the plugin `ready` event
-
-// Frontend mirror of each instance's layout state: { side, order }. The Rust
-// side owns the truth; this map only drives the demo controls (management
-// list: drag re-order, side switch, visibility) so the UI can reflect and
-// mutate them.
-const instState = new Map(); // id -> { side, order }
 
 // ---------------------------------------------------------------------------
-// Plugin API helpers
+// Persistence helpers
 // ---------------------------------------------------------------------------
-const api = {
-  create: (o) => invoke("plugin:multiline-taskband|create", { payload: o }),
-  remove: (o) => invoke("plugin:multiline-taskband|remove", { payload: o }),
-  setText: (o) => invoke("plugin:multiline-taskband|set_text", { payload: o }),
-  setFontSizes: (o) => invoke("plugin:multiline-taskband|set_font_sizes", { payload: o }),
-  setPadding: (o) => invoke("plugin:multiline-taskband|set_padding", { payload: o }),
-  setSide: (o) => invoke("plugin:multiline-taskband|set_side", { payload: o }),
-  setOrder: (o) => invoke("plugin:multiline-taskband|set_order", { payload: o }),
-  setMargin: (o) => invoke("plugin:multiline-taskband|set_margin", { payload: o }),
-  setColors: (o) => invoke("plugin:multiline-taskband|set_colors", { payload: o }),
-  setBold: (o) => invoke("plugin:multiline-taskband|set_bold", { payload: o }),
-  setAlignment: (o) => invoke("plugin:multiline-taskband|set_alignment", { payload: o }),
-  setVisible: (o) => invoke("plugin:multiline-taskband|set_visible", { payload: o }),
-  rect: (o) => invoke("plugin:multiline-taskband|rect", { payload: o }),
-  isVisible: (o) => invoke("plugin:multiline-taskband|is_visible", { payload: o }),
-  setPopupWindow: (o) => invoke("plugin:multiline-taskband|set_popup_window", { payload: o }),
-  setAutoPopup: (o) => invoke("plugin:multiline-taskband|set_auto_popup", { payload: o }),
-  openPopup: (o) => invoke("plugin:multiline-taskband|open_popup", { payload: o }),
-  closePopup: (o) => invoke("plugin:multiline-taskband|close_popup", { payload: o }),
-  togglePopup: (o) => invoke("plugin:multiline-taskband|toggle_popup", { payload: o }),
-  setMenu: (o) => invoke("plugin:multiline-taskband|set_menu", { payload: o }),
-};
+
+function persist() {
+  saveSettings(settings);
+}
+
+function refreshFromStorage() {
+  // The popup window writes instance fields to the same store; re-read so the
+  // list reflects what was changed there.
+  settings = loadSettings(PRESETS);
+}
 
 // ---------------------------------------------------------------------------
-// Lifecycle
+// Instance lifecycle
 // ---------------------------------------------------------------------------
-async function createInstance(id, side, top, bottom) {
-  // Register every event listener BEFORE creating the instance. The plugin's
-  // UI thread emits `ready` right after the overlay window is created, which
-  // can beat this JS call if `listen` is registered after `create` — the
-  // event would be dropped and the badge stuck on "pending".
-  await listen(`multiline-taskband://${id}//ready`, () => {
-    readyIds.add(id);
-    updateBadges();
-  });
-  await listen(`multiline-taskband://${id}//click`, (e) => {
-    const el = document.querySelector(`[data-id="${id}"] .click-out`);
-    if (el) {
-      const p = e.payload.position;
-      el.textContent = `点击: ${e.payload.button} @ ${p.x},${p.y}`;
-    }
-  });
-  await listen(`multiline-taskband://${id}//popup-open`, (e) => {
-    const el = document.querySelector(`[data-id="${id}"] .popup-out`);
-    if (el) el.textContent = "popup 打开";
-  });
-  await listen(`multiline-taskband://${id}//popup-close`, (e) => {
-    const el = document.querySelector(`[data-id="${id}"] .popup-out`);
-    if (el) el.textContent = "popup 关闭";
-  });
-  // Right-click context menu: "打开设置界面" re-shows the main window and
-  // "退出 App" exits the process. The actions are handled on the Rust side
-  // (works even while the main window is hidden); here we only echo the
-  // selection on the card.
-  await listen(`multiline-taskband://${id}//menu`, (e) => {
-    const el = document.querySelector(`[data-id="${id}"] .popup-out`);
-    if (el) el.textContent = `菜单: ${e.payload.itemId}`;
-  });
 
-  await api.create({ id, side, top, bottom }).catch((e) => console.error(`create ${id}:`, e));
-  created.add(id);
-  if (!instState.has(id)) {
-    // Creation order is the initial sort key; the management list drag
-    // re-assigns 0..n-1 afterwards.
-    instState.set(id, { side, order: instState.size });
+async function createInstance(p) {
+  // Register every event listener BEFORE creating the instance: the plugin's
+  // UI thread can emit events right after the overlay is created, which would
+  // beat a `listen` registered after `create`.
+  await listen(`multiline-taskband://${p.id}//click`, (e) => {
+    const pos = e.payload.position || {};
+    log(`Click ${p.id} (${e.payload.button}) @ ${pos.x},${pos.y}`);
+  }).catch(() => {});
+  await listen(`multiline-taskband://${p.id}//popup-open`, () => {
+    log(`${p.id} — settings popup opened`);
+  }).catch(() => {});
+  await listen(`multiline-taskband://${p.id}//popup-close`, () => {
+    log(`${p.id} — settings popup closed`);
+    // The popup may have changed text/side/appearance; re-read and refresh.
+    refreshFromStorage();
+    renderList();
+    updateStatus();
+  }).catch(() => {});
+  await listen(`multiline-taskband://${p.id}//menu`, (e) => {
+    log(`${p.id} menu: ${e.payload.itemId}`);
+  }).catch(() => {});
+
+  await invoke("plugin:multiline-taskband|create", {
+    payload: { id: p.id, side: p.side, top: p.top, bottom: p.bottom },
+  }).catch((err) => console.error(`create ${p.id}:`, err));
+  created.add(p.id);
+
+  // Right-click context menu (actions handled on the Rust side).
+  await invoke("plugin:multiline-taskband|set_menu", {
+    payload: {
+      id: p.id,
+      items: [
+        { type: "item", id: "open-settings", text: "Open settings window" },
+        { type: "separator" },
+        { type: "item", id: "quit", text: "Quit app" },
+      ],
+    },
+  }).catch((err) => console.error(`set_menu ${p.id}:`, err));
+
+  // Re-apply the persisted appearance that differs from the plugin defaults.
+  await applyAppearance(p.id);
+
+  // Honor the persisted state: a previously hidden instance is created
+  // invisible right away.
+  const s = settings.instances[p.id];
+  if (s && s.shown === false) {
+    await invoke("plugin:multiline-taskband|set_visible", {
+      payload: { id: p.id, visible: false },
+    }).catch((err) => console.error(`set_visible failed for ${p.id}:`, err));
   }
-  await api.setMenu({
-    id,
-    items: [
-      { type: "item", id: "open-settings", text: "打开设置界面" },
-      { type: "separator" },
-      { type: "item", id: "quit", text: "退出 App" },
-    ],
-  }).catch((e) => console.error(`setMenu ${id}:`, e));
+
   renderList();
-  renderManageList();
   updateStatus();
 }
 
-async function removeInstance(id) {
-  await api.remove({ id }).catch((e) => console.error(`remove ${id}:`, e));
-  created.delete(id);
-  readyIds.delete(id);
-  instState.delete(id);
+/** Re-apply every persisted style that differs from the plugin's defaults. */
+async function applyAppearance(id) {
+  const s = settings.instances[id];
+  if (!s) return;
+  const jobs = [];
+  if (s.topSize !== 11 || s.bottomSize !== 11) {
+    jobs.push(
+      invoke("plugin:multiline-taskband|set_font_sizes", {
+        payload: { id, top: s.topSize, bottom: s.bottomSize },
+      })
+    );
+  }
+  if (s.topFontFamily || s.bottomFontFamily) {
+    jobs.push(
+      invoke("plugin:multiline-taskband|set_font_family", {
+        payload: { id, top: s.topFontFamily, bottom: s.bottomFontFamily },
+      })
+    );
+  }
+  if (s.leftPadding !== 4 || s.rightPadding !== 4) {
+    jobs.push(
+      invoke("plugin:multiline-taskband|set_padding", {
+        payload: { id, left: s.leftPadding, right: s.rightPadding },
+      })
+    );
+  }
+  const topSolid = s.topColor && s.topColor.type === "solid";
+  const bottomSolid = s.bottomColor && s.bottomColor.type === "solid";
+  if (topSolid || bottomSolid) {
+    jobs.push(
+      invoke("plugin:multiline-taskband|set_colors", {
+        payload: {
+          id,
+          top: topSolid ? { type: "solid", value: s.topColor.value } : { type: "default" },
+          bottom: bottomSolid ? { type: "solid", value: s.bottomColor.value } : { type: "default" },
+        },
+      })
+    );
+  }
+  if (s.topBold || s.bottomBold) {
+    jobs.push(
+      invoke("plugin:multiline-taskband|set_bold", {
+        payload: { id, top: !!s.topBold, bottom: !!s.bottomBold },
+      })
+    );
+  }
+  if (s.topAlign || s.bottomAlign) {
+    jobs.push(
+      invoke("plugin:multiline-taskband|set_alignment", {
+        payload: { id, top: s.topAlign, bottom: s.bottomAlign },
+      })
+    );
+  }
+  await Promise.all(jobs).catch((err) => console.error(`applyAppearance ${id}:`, err));
+}
+
+async function setInstanceVisible(id, visible) {
+  if (!settings.instances[id]) return;
+  settings.instances[id].shown = visible;
+  persist();
+  if (created.has(id)) {
+    await invoke("plugin:multiline-taskband|set_visible", {
+      payload: { id, visible },
+    }).catch((err) => console.error(`set_visible failed for ${id}:`, err));
+  }
   renderList();
-  renderManageList();
   updateStatus();
 }
 
 async function setAllVisible(visible) {
   for (const id of created) {
-    await api.setVisible({ id, visible }).catch(() => {});
+    await setInstanceVisible(id, visible);
   }
+}
+
+/** Permanently remove a runtime-created instance (presets stay). */
+async function removeInstance(id) {
+  if (!created.has(id)) return;
+  await invoke("plugin:multiline-taskband|remove", {
+    payload: { id },
+  }).catch((err) => console.error(`remove ${id}:`, err));
+  created.delete(id);
+  delete settings.instances[id];
+  settings.customOrder = settings.customOrder.filter((x) => x !== id);
+  persist();
+  renderList();
+  updateStatus();
 }
 
 // ---------------------------------------------------------------------------
 // UI
 // ---------------------------------------------------------------------------
+
 function renderList() {
   const ul = document.querySelector("#instance-list");
+  if (!ul) return;
   ul.innerHTML = "";
-  // Cards follow the same order as the management list (ascending `order`).
-  const ids = [...created].sort(
-    (a, b) => (instState.get(a)?.order ?? 0) - (instState.get(b)?.order ?? 0)
-  );
-  for (const id of ids) {
-    ul.appendChild(instanceCard(id));
+  for (const p of PRESETS) {
+    if (created.has(p.id)) ul.appendChild(instanceRow(p.id, true));
+  }
+  for (const id of settings.customOrder) {
+    if (created.has(id) && settings.instances[id]) {
+      ul.appendChild(instanceRow(id, false));
+    }
   }
 }
 
-/** Reflect `readyIds` on every rendered card's badge (idempotent). */
-function updateBadges() {
-  for (const el of document.querySelectorAll(".ready-badge")) {
-    const id = el.closest(".instance-card")?.dataset.id;
-    const ready = readyIds.has(id);
-    el.textContent = ready ? "ready" : "pending";
-    el.classList.toggle("ready", ready);
-  }
-}
+function instanceRow(id, preset) {
+  const s = settings.instances[id];
+  if (!s) return document.createElement("li");
 
-function instanceCard(id) {
-  const preset = PRESETS.find((p) => p.id === id);
-  const state = instState.get(id) || {
-    side: preset ? preset.side : "right",
-    order: 0,
-  };
-  const ready = readyIds.has(id);
   const li = document.createElement("li");
-  li.className = "instance-card";
-  li.dataset.id = id;
+  li.className = "instance-row";
+  if (s.shown === false) li.classList.add("row-hidden");
 
-  const head = document.createElement("div");
-  head.className = "instance-head";
-  head.innerHTML = `
-    <span class="instance-name">${id}</span>
-    <span class="badge ready-badge ${ready ? "ready" : ""}">${ready ? "ready" : "pending"}</span>
-    <label class="switch" title="显示/隐藏">
-      <input type="checkbox" class="vis-toggle" checked />
-      <span class="slider"></span>
-    </label>
-    <button type="button" class="remove-btn">删除</button>
+  const name = document.createElement("span");
+  name.className = "instance-name";
+  name.textContent = id;
+
+  const text = document.createElement("span");
+  text.className = "instance-text muted";
+  text.textContent = `"${s.top}" / "${s.bottom}"`;
+
+  // left/right side switcher — taskband-specific (the menubar plugin has no
+  // side concept; this is the left/right setting unique to the taskband).
+  const side = document.createElement("select");
+  side.className = "instance-side";
+  side.title = "Left/right side of the taskbar";
+  side.innerHTML = `
+    <option value="left" ${s.side === "left" ? "selected" : ""}>left</option>
+    <option value="right" ${s.side === "right" ? "selected" : ""}>right</option>
   `;
-  li.appendChild(head);
+  side.addEventListener("change", (e) => {
+    s.side = e.target.value;
+    persist();
+    invoke("plugin:multiline-taskband|set_side", {
+      payload: { id, side: e.target.value },
+    }).catch((err) => console.error(`set_side ${id}:`, err));
+  });
 
-  // --- top/bottom text ---
-  li.appendChild(textRow("文本", preset ? preset.top : "", preset ? preset.bottom : ""));
+  // Open this instance's settings popup without having to click the taskbar.
+  const settingsBtn = document.createElement("button");
+  settingsBtn.type = "button";
+  settingsBtn.className = "settings-btn";
+  settingsBtn.textContent = "Settings";
+  settingsBtn.title = "Open this instance's settings popup";
+  settingsBtn.addEventListener("click", () => {
+    invoke("plugin:multiline-taskband|open_popup", {
+      payload: { id },
+    }).catch((err) => console.error(`open_popup ${id}:`, err));
+  });
 
-  // --- font sizes (both lines default to the same size) ---
-  li.appendChild(fontRow());
+  const switchLabel = document.createElement("label");
+  switchLabel.className = "switch";
+  switchLabel.title = "Show / hide this taskbar item";
+  const toggle = document.createElement("input");
+  toggle.type = "checkbox";
+  toggle.checked = s.shown !== false;
+  toggle.addEventListener("change", () => setInstanceVisible(id, toggle.checked));
+  const slider = document.createElement("span");
+  slider.className = "slider";
+  switchLabel.appendChild(toggle);
+  switchLabel.appendChild(slider);
 
-  // --- per-instance horizontal padding ---
-  li.appendChild(paddingRow());
+  li.appendChild(name);
+  li.appendChild(text);
+  li.appendChild(side);
+  li.appendChild(settingsBtn);
+  li.appendChild(switchLabel);
 
-  // --- colors (default / #rrggbb, per line) ---
-  li.appendChild(colorRow("上行颜色", "top"));
-  li.appendChild(colorRow("下行颜色", "bottom"));
-
-  // --- bold & alignment ---
-  li.appendChild(boldAlignRow());
-
-  // --- rect / isVisible ---
-  li.appendChild(rectRow());
-
-  // --- click / popup feedback ---
-  li.appendChild(feedbackRow());
-
-  bindEvents(li, id);
+  // Runtime-created instances can be removed; the 5 presets are fixed.
+  if (!preset) {
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "remove-btn";
+    removeBtn.textContent = "✕";
+    removeBtn.title = "Remove this instance (permanent)";
+    removeBtn.addEventListener("click", () => removeInstance(id));
+    li.appendChild(removeBtn);
+  }
   return li;
 }
 
-function textRow(label, topVal, bottomVal) {
-  const row = document.createElement("div");
-  row.className = "field-row";
-  row.innerHTML = `
-    <label>${label}</label>
-    <input class="top-text" value="${topVal}" placeholder="上行" />
-    <input class="bottom-text" value="${bottomVal}" placeholder="下行" />
-  `;
-  return row;
+function updateStatus() {
+  const el = document.querySelector("#instance-status");
+  if (!el) return;
+  const visibleCount = [...created].filter((id) => {
+    const s = settings.instances[id];
+    return s ? s.shown !== false : false;
+  }).length;
+  el.textContent = `${created.size} instances · showing ${visibleCount} / hidden ${created.size - visibleCount}`;
 }
 
-function fontRow() {
-  const row = document.createElement("div");
-  row.className = "field-row";
-  row.innerHTML = `
-    <label>字号(pt)</label>
-    <input type="number" class="top-size" value="11" min="6" max="24" step="0.5" title="上行字号" />
-    <input type="number" class="bottom-size" value="11" min="6" max="24" step="0.5" title="下行字号" />
-  `;
-  return row;
-}
-
-function paddingRow() {
-  const row = document.createElement("div");
-  row.className = "field-row";
-  row.innerHTML = `
-    <label>左右边距(px)</label>
-    <input type="number" class="pad-left" value="4" min="0" max="24" step="1" title="左边距（物理像素）" />
-    <input type="number" class="pad-right" value="4" min="0" max="24" step="1" title="右边距（物理像素）" />
-  `;
-  return row;
-}
-
-function colorRow(label, line) {
-  const row = document.createElement("div");
-  row.className = "field-row";
-  row.dataset.line = line;
-  row.innerHTML = `
-    <label>${label}</label>
-    <select class="color-type">
-      <option value="default">default（跟随系统）</option>
-      <option value="solid">solid（固定色）</option>
-    </select>
-    <input type="color" class="color-value" value="#FF4F44" disabled />
-    <input class="color-hex" value="#FF4F44" placeholder="#rrggbb" disabled />
-  `;
-  return row;
-}
-
-function boldAlignRow() {
-  const row = document.createElement("div");
-  row.className = "field-row";
-  row.innerHTML = `
-    <label>加粗</label>
-    <label class="mini">上<input type="checkbox" class="top-bold" /></label>
-    <label class="mini">下<input type="checkbox" class="bottom-bold" /></label>
-    <label class="mini align-lbl">对齐</label>
-    <select class="top-align">
-      <option value="0">上·左</option><option value="1">上·中</option><option value="2">上·右</option>
-    </select>
-    <select class="bottom-align">
-      <option value="0">下·左</option><option value="1">下·中</option><option value="2">下·右</option>
-    </select>
-  `;
-  return row;
-}
-
-function rectRow() {
-  const row = document.createElement("div");
-  row.className = "field-row";
-  row.innerHTML = `
-    <button type="button" class="rect-btn">rect()</button>
-    <span class="rect-out muted"></span>
-  `;
-  return row;
-}
-
-function feedbackRow() {
-  const row = document.createElement("div");
-  row.className = "field-row";
-  row.innerHTML = `
-    <span class="click-out muted"></span>
-    <span class="popup-out muted"></span>
-  `;
-  return row;
-}
-
-// ---------------------------------------------------------------------------
-// Event wiring (fire-and-forget; the plugin marshals to its UI thread)
-// ---------------------------------------------------------------------------
-function bindEvents(li, id) {
-  const $ = (sel) => li.querySelector(sel);
-
-  $(".vis-toggle").addEventListener("change", (e) =>
-    api.setVisible({ id, visible: e.target.checked }).catch(() => {})
-  );
-  $(".remove-btn").addEventListener("click", () => removeInstance(id));
-
-  const onInput = (sel, fn) => {
-    const el = $(sel);
-    el.addEventListener(el.type === "checkbox" ? "change" : "input", () => fn(el));
-  };
-
-  const pushText = () =>
-    api.setText({ id, top: $(".top-text").value, bottom: $(".bottom-text").value });
-  onInput(".top-text", () => pushText());
-  onInput(".bottom-text", () => pushText());
-
-  onInput(".top-size", (el) =>
-    api.setFontSizes({ id, top: Number(el.value), bottom: Number($(".bottom-size").value) })
-  );
-  onInput(".bottom-size", (el) =>
-    api.setFontSizes({ id, top: Number($(".top-size").value), bottom: Number(el.value) })
-  );
-
-  onInput(".pad-left", (el) =>
-    api.setPadding({ id, left: Number(el.value), right: Number($(".pad-right").value) })
-  );
-  onInput(".pad-right", (el) =>
-    api.setPadding({ id, left: Number($(".pad-left").value), right: Number(el.value) })
-  );
-
-  // Wire both color rows: read the current value of the other row so
-  // setColors always receives a complete { top, bottom } pair.
-  const colorState = () => {
-    const read = (line) => {
-      const row = li.querySelector(`.field-row[data-line="${line}"]`);
-      if (row.querySelector(".color-type").value === "default") {
-        return { type: "default" };
-      }
-      let v = row.querySelector(".color-hex").value.trim();
-      if (!v.startsWith("#")) v = `#${v}`;
-      return { type: "solid", value: v };
-    };
-    return { top: read("top"), bottom: read("bottom") };
-  };
-  for (const line of ["top", "bottom"]) {
-    const row = li.querySelector(`.field-row[data-line="${line}"]`);
-    const typeSel = row.querySelector(".color-type");
-    const colorVal = row.querySelector(".color-value");
-    const hexIn = row.querySelector(".color-hex");
-    const push = () => api.setColors({ id, ...colorState() }).catch(() => {});
-    typeSel.addEventListener("change", () => {
-      const solid = typeSel.value === "solid";
-      colorVal.disabled = !solid;
-      hexIn.disabled = !solid;
-      push();
-    });
-    colorVal.addEventListener("input", () => {
-      hexIn.value = colorVal.value;
-      push();
-    });
-    hexIn.addEventListener("input", () => push());
-  }
-
-  const boldPush = () =>
-    api.setBold({ id, top: $(".top-bold").checked, bottom: $(".bottom-bold").checked });
-  $(".top-bold").addEventListener("change", boldPush);
-  $(".bottom-bold").addEventListener("change", boldPush);
-
-  $(".top-align").addEventListener("change", (e) => pushAlign());
-  $(".bottom-align").addEventListener("change", (e) => pushAlign());
-  const pushAlign = () =>
-    api.setAlignment({ id, top: Number($(".top-align").value), bottom: Number($(".bottom-align").value) });
-
-  $(".rect-btn").addEventListener("click", async () => {
-    try {
-      const r = await api.rect({ id });
-      $(".rect-out").textContent = `x=${r.x} y=${r.y} ${r.width}×${r.height}`;
-    } catch (e) {
-      $(".rect-out").textContent = String(e);
-    }
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Instance management list (drag to re-order, switch side, toggle visibility)
-// ---------------------------------------------------------------------------
-let dragId = null;
-
-function renderManageList() {
-  const ul = document.querySelector("#instance-manage-list");
-  ul.innerHTML = "";
-  const ids = [...created].sort(
-    (a, b) => (instState.get(a)?.order ?? 0) - (instState.get(b)?.order ?? 0)
-  );
-  for (const id of ids) {
-    ul.appendChild(manageRow(id));
-  }
-}
-
-function manageRow(id) {
-  const state = instState.get(id) || { side: "right", order: 0 };
-  const li = document.createElement("li");
-  li.className = "manage-row";
-  li.dataset.id = id;
-  li.draggable = true;
-  li.innerHTML = `
-    <span class="drag-handle" title="拖拽调整顺序">⠿</span>
-    <span class="manage-name">${id}</span>
-    <select class="manage-side" title="靠任务栏左/右侧">
-      <option value="left" ${state.side === "left" ? "selected" : ""}>left</option>
-      <option value="right" ${state.side === "right" ? "selected" : ""}>right</option>
-    </select>
-    <label class="switch" title="显示/隐藏">
-      <input type="checkbox" class="manage-vis" checked />
-      <span class="slider"></span>
-    </label>
-  `;
-
-  li.addEventListener("dragstart", (e) => {
-    dragId = id;
-    li.classList.add("dragging");
-    e.dataTransfer.effectAllowed = "move";
-    // Chromium/WebView2 refuse to fire dragover/drop on the target unless the
-    // source registers at least one data item during dragstart.
-    e.dataTransfer.setData("text/plain", id);
-  });
-  li.addEventListener("dragend", () => {
-    dragId = null;
-    for (const el of document.querySelectorAll("#instance-manage-list li")) {
-      el.classList.remove("dragging", "drag-over");
-    }
-  });
-  li.addEventListener("dragover", (e) => {
-    e.preventDefault(); // allow drop
-    e.dataTransfer.dropEffect = "move";
-    li.classList.add("drag-over");
-  });
-  li.addEventListener("dragleave", () => {
-    li.classList.remove("drag-over");
-  });
-  li.addEventListener("drop", (e) => {
-    e.preventDefault();
-    li.classList.remove("drag-over");
-    if (!dragId || dragId === id) return;
-    const ulEl = document.querySelector("#instance-manage-list");
-    const rows = [...ulEl.children];
-    const fromEl = rows.find((r) => r.dataset.id === dragId);
-    const toEl = rows.find((r) => r.dataset.id === id);
-    if (!fromEl || !toEl) return;
-    // Move the dragged row before/after the target, matching mouse intent.
-    const fromIdx = rows.indexOf(fromEl);
-    const toIdx = rows.indexOf(toEl);
-    if (fromIdx < toIdx) toEl.after(fromEl);
-    else toEl.before(fromEl);
-    // Re-assign order by the new list position: list order == global order.
-    [...ulEl.children].forEach((row, i) => {
-      const rid = row.dataset.id;
-      const st = instState.get(rid);
-      if (st) st.order = i;
-      api.setOrder({ id: rid, order: i }).catch(() => {});
-    });
-    renderList(); // keep the cards in the same order as the management list
-  });
-
-  li.querySelector(".manage-side").addEventListener("change", (e) => {
-    const st = instState.get(id);
-    if (st) st.side = e.target.value;
-    api.setSide({ id, side: e.target.value }).catch(() => {});
-  });
-  li.querySelector(".manage-vis").addEventListener("change", (e) => {
-    li.classList.toggle("row-hidden", !e.target.checked);
-    api.setVisible({ id, visible: e.target.checked }).catch(() => {});
-  });
-  return li;
+function log(msg) {
+  const el = document.querySelector("#click-log");
+  if (el) el.textContent = msg;
 }
 
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-function updateStatus() {
-  document.querySelector("#instance-status").textContent = `${created.size} 个实例`;
-}
 
-document.querySelector("#create-btn").addEventListener("click", async () => {
-  const id = document.querySelector("#new-id").value.trim();
-  if (!id) return;
-  const side = document.querySelector("#new-side").value;
-  const top = document.querySelector("#new-top").value.trim();
-  const bottom = document.querySelector("#new-bottom").value.trim();
-  await createInstance(id, side, top, bottom);
-  document.querySelector("#new-id").value = "";
-});
+window.addEventListener("DOMContentLoaded", async () => {
+  document.querySelector("#show-all-btn").addEventListener("click", () => setAllVisible(true));
+  document.querySelector("#hide-all-btn").addEventListener("click", () => setAllVisible(false));
 
-document.querySelector("#show-all-btn").addEventListener("click", () => setAllVisible(true));
-document.querySelector("#hide-all-btn").addEventListener("click", () => setAllVisible(false));
-
-document.querySelector("#margin-btn").addEventListener("click", () => {
-  const v = parseInt(document.querySelector("#global-margin").value, 10);
-  if (Number.isFinite(v)) {
-    api.setMargin({ margin: v }).catch((e) => console.error("setMargin:", e));
+  // Pre-fill the persisted global margin and apply it on boot (only when it
+  // differs from the plugin default, so a first run is a no-op).
+  document.querySelector("#global-margin").value = settings.margin;
+  if (settings.margin !== DEFAULT_MARGIN) {
+    await invoke("plugin:multiline-taskband|set_margin", {
+      payload: { margin: settings.margin },
+    }).catch((err) => console.error("set_margin:", err));
   }
-});
 
-// Create the 5 presets on boot.
-(async () => {
+  document.querySelector("#margin-btn").addEventListener("click", () => {
+    const v = parseInt(document.querySelector("#global-margin").value, 10);
+    if (Number.isFinite(v)) {
+      settings.margin = v;
+      persist();
+      invoke("plugin:multiline-taskband|set_margin", {
+        payload: { margin: v },
+      }).catch((err) => console.error("set_margin:", err));
+    }
+  });
+
+  document.querySelector("#create-btn").addEventListener("click", async () => {
+    const id = document.querySelector("#new-id").value.trim();
+    if (!id) return;
+    if (created.has(id)) {
+      log(`Instance "${id}" already exists`);
+      return;
+    }
+    const side = document.querySelector("#new-side").value;
+    const top = document.querySelector("#new-top").value.trim() || id;
+    const bottom = document.querySelector("#new-bottom").value.trim() || id;
+    settings.instances[id] = {
+      ...instanceDefaults(id, side),
+      top,
+      bottom,
+      shown: true,
+    };
+    if (!settings.customOrder.includes(id)) settings.customOrder.push(id);
+    persist();
+    await createInstance({ id, side, top, bottom }).catch((err) =>
+      console.error(`Failed to create ${id}:`, err)
+    );
+    document.querySelector("#new-id").value = "";
+    document.querySelector("#new-top").value = "";
+    document.querySelector("#new-bottom").value = "";
+    renderList();
+    updateStatus();
+  });
+
   // The settings popup window is declared in tauri.conf.json (label "popup").
   // Register it with the plugin and keep auto-popup on left click enabled —
-  // hosts must call setPopupWindow before the first click.
-  await api.setPopupWindow({ label: "popup" }).catch((e) => console.error("setPopupWindow:", e));
-  await api.setAutoPopup({ enabled: true }).catch(() => {});
+  // hosts must call set_popup_window before the first click.
+  await invoke("plugin:multiline-taskband|set_popup_window", {
+    payload: { label: "popup" },
+  }).catch((err) => console.error("set_popup_window:", err));
+  await invoke("plugin:multiline-taskband|set_auto_popup", {
+    payload: { enabled: true },
+  }).catch(() => {});
+
+  // Create all presets up front (ordered: left first, then right), then any
+  // runtime-created instances persisted from a previous session.
   for (const p of PRESETS) {
-    await createInstance(p.id, p.side, p.top, p.bottom);
+    const s = settings.instances[p.id] || instanceDefaults(p.id, p.side);
+    await createInstance({ id: p.id, side: s.side, top: s.top, bottom: s.bottom }).catch((err) =>
+      console.error(`Failed to create ${p.id}:`, err)
+    );
   }
-})();
+  for (const id of settings.customOrder) {
+    const s = settings.instances[id];
+    if (!s) continue;
+    await createInstance({ id, side: s.side, top: s.top, bottom: s.bottom }).catch((err) =>
+      console.error(`Failed to restore ${id}:`, err)
+    );
+  }
+  renderList();
+  updateStatus();
+});

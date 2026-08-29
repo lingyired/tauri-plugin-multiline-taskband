@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="styles.css" />
@@ -11,51 +11,57 @@
   <body>
     <main class="container">
       <h1>Multiline Taskband Plugin</h1>
+      <p class="muted">multiline-taskband-demo · com.tauri.multiline-taskband-demo</p>
+
       <p class="muted">
-        tauri-plugin-multiline-taskband demo · Windows 10/11 任务栏双行文字。
-        每个实例是叠加在任务栏上的透明窗口：<b>left</b> 贴开始按钮右侧，
-        <b>right</b> 贴通知区（托盘）左侧。每张卡片可<b>切换左右</b>、
-        <b>调整排序</b>（同侧按 order 排开），全局可设置 item 外边距。
+        5 taskbar instances (mb-1 … mb-5). Each instance is a two-line overlay
+        on the taskbar; click one <b>on the taskbar</b> (or its Settings button
+        below) to open its settings popup (text, font sizes, padding, colors,
+        bold, alignment, side). All settings — text, appearance, side,
+        shown/hidden, the global margin and any instances you create — are
+        saved automatically and restored on the next launch.
+      </p>
+      <p class="muted">
+        Windows 10 / 11: <b>left</b> instances hug the taskbar's left edge,
+        <b>right</b> instances sit next to the notification area (tray);
+        same-side instances are laid out side by side in creation order.
       </p>
 
       <section class="card">
-        <h2>全局</h2>
+        <h2>Global settings</h2>
+        <p class="muted">Options that apply to every taskbar instance (persisted).</p>
         <div class="create-form">
-          <label class="inline-label" for="global-margin">item 外边距(px)</label>
+          <label class="inline-label" for="global-margin">Margin (px)</label>
           <input id="global-margin" type="number" value="4" min="0" max="24" step="1"
-                 title="实例之间的间距（物理像素），默认 4" />
-          <button id="margin-btn">应用</button>
+                 title="Spacing between instances (physical pixels), default 4" />
+          <button id="margin-btn">Apply</button>
         </div>
-        <p class="muted">
-          影响任务栏上相邻实例之间的间距；实例内部两行文字之间的空隙是固定样式，不受此设置影响。
-        </p>
       </section>
 
       <section class="card">
-        <h2>新建实例</h2>
-        <div class="create-form">
-          <input id="new-id" placeholder="id（如 group-a）" />
-          <select id="new-side">
-            <option value="right">right（贴托盘）</option>
-            <option value="left">left（贴开始）</option>
-          </select>
-          <input id="new-top" placeholder="上行文字（如 A股）" />
-          <input id="new-bottom" placeholder="下行文字（如 +1.23%）" />
-          <button id="create-btn">创建</button>
-        </div>
+        <h2>Taskbar instances</h2>
         <div class="row">
-          <button type="button" id="show-all-btn">全部显示</button>
-          <button type="button" id="hide-all-btn">全部隐藏</button>
+          <button type="button" id="show-all-btn">Show all</button>
+          <button type="button" id="hide-all-btn">Hide all</button>
           <span id="instance-status" class="muted"></span>
         </div>
         <ul id="instance-list" class="instance-list"></ul>
+        <p id="click-log" class="muted">Click an item on the taskbar, or its Settings button, to open its settings popup.</p>
+      </section>
 
-        <h3 class="manage-heading">实例顺序与显示</h3>
-        <p class="muted">
-          拖拽 <span class="drag-handle-inline">⠿</span> 调整排序；行内可切换
-          left/right 位置与显示/隐藏（隐藏的实例不占位）。
-        </p>
-        <ul id="instance-manage-list" class="manage-list"></ul>
+      <section class="card">
+        <h2>Create instance</h2>
+        <p class="muted">Create a new taskbar instance at runtime (unique id; empty text lines show the instance id). Created instances are persisted and restored on the next launch — remove them with the ✕ button on their row.</p>
+        <div class="create-form">
+          <input id="new-id" placeholder="id (e.g. group-a)" />
+          <select id="new-side">
+            <option value="right">right (tray)</option>
+            <option value="left">left (start)</option>
+          </select>
+          <input id="new-top" placeholder="top line (e.g. +1.23%)" />
+          <input id="new-bottom" placeholder="bottom line (e.g. ¥12,340)" />
+          <button id="create-btn">Create</button>
+        </div>
       </section>
     </main>
   </body>

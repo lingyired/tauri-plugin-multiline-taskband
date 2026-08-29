@@ -415,6 +415,18 @@
           "markdownDescription": "Denies the set_colors command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_font_family command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-font-family",
+          "markdownDescription": "Enables the set_font_family command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_font_family command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-font-family",
+          "markdownDescription": "Denies the set_font_family command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_font_sizes command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-font-sizes",
@@ -535,10 +547,10 @@
           "markdownDescription": "Denies the toggle_popup command without any pre-configured scope."
         },
         {
-          "description": "Allows all multiline-taskband commands.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-remove`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-padding`\n- `allow-set-side`\n- `allow-set-order`\n- `allow-set-margin`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-popup-window`\n- `allow-set-auto-popup`\n- `allow-open-popup`\n- `allow-close-popup`\n- `allow-toggle-popup`\n- `allow-set-menu`",
+          "description": "Default permissions for the multiline-taskband plugin (core rendering + read-only queries). High-impact commands (remove, menu injection, popup window control) are intentionally NOT included — grant them explicitly, e.g. `multiline-taskband:allow-remove`.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-font-family`\n- `allow-set-padding`\n- `allow-set-side`\n- `allow-set-order`\n- `allow-set-margin`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-auto-popup`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Allows all multiline-taskband commands.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-remove`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-padding`\n- `allow-set-side`\n- `allow-set-order`\n- `allow-set-margin`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-popup-window`\n- `allow-set-auto-popup`\n- `allow-open-popup`\n- `allow-close-popup`\n- `allow-toggle-popup`\n- `allow-set-menu`"
+          "markdownDescription": "Default permissions for the multiline-taskband plugin (core rendering + read-only queries). High-impact commands (remove, menu injection, popup window control) are intentionally NOT included — grant them explicitly, e.g. `multiline-taskband:allow-remove`.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-font-family`\n- `allow-set-padding`\n- `allow-set-side`\n- `allow-set-order`\n- `allow-set-margin`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-auto-popup`"
         }
       ]
     }

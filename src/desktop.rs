@@ -74,6 +74,25 @@ impl<R: Runtime> MultilineTaskband<R> {
         }
     }
 
+    /// Override the font family of the top/bottom line. `None`/`""` resets
+    /// that line to the system default font (mirrors the menubar plugin).
+    pub fn set_font_family(
+        &self,
+        id: String,
+        top: Option<String>,
+        bottom: Option<String>,
+    ) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_font_family(id, top, bottom)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (id, top, bottom);
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
     pub fn set_padding(&self, id: String, left: i32, right: i32) -> crate::Result<()> {
         #[cfg(target_os = "windows")]
         {

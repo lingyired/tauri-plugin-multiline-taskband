@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Taskband Item Settings</title>
     <style>
+      /* Visual style mirrors the multiline-menubar demo's popup. */
       :root {
         color-scheme: light dark;
       }
@@ -25,12 +26,12 @@
         height: calc(100% - 24px);
         background: rgba(255, 255, 255, 0.94);
         border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 12px;
+        border-radius: 14px;
         box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
-        padding: 16px;
+        padding: 18px;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 12px;
         color: #1d1d1f;
         overflow-y: auto;
       }
@@ -74,6 +75,9 @@
         border: 1px solid rgba(0, 0, 0, 0.15);
         cursor: pointer;
       }
+      input[type="range"] {
+        width: 100%;
+      }
       select {
         padding: 6px 8px;
         border-radius: 8px;
@@ -90,7 +94,7 @@
           background: rgba(0, 0, 0, 0.25);
         }
       }
-      fieldset {
+      fieldset.colors {
         border: 1px solid rgba(0, 0, 0, 0.12);
         border-radius: 10px;
         padding: 8px 10px;
@@ -101,7 +105,7 @@
         gap: 6px;
       }
       @media (prefers-color-scheme: dark) {
-        fieldset {
+        fieldset.colors {
           border-color: rgba(255, 255, 255, 0.15);
         }
       }
@@ -114,6 +118,9 @@
       .row {
         display: flex;
         gap: 8px;
+      }
+      .row > .field {
+        flex: 1;
       }
       .inline {
         display: flex;
@@ -141,140 +148,158 @@
 
   <body>
     <div class="card">
-      <h2 id="popup-header">实例设置</h2>
-      <p>点击任务栏上的该实例，在这里单独调整它的文字与外观。</p>
+      <h2 id="popup-header">Instance settings</h2>
+      <p>Edit this taskbar instance's text and appearance below.</p>
 
-      <fieldset>
-        <legend>文字</legend>
+      <fieldset class="colors">
+        <legend>Text</legend>
         <div class="field">
-          <label for="popup-top">上行文字</label>
+          <label for="popup-top">Top label</label>
           <input type="text" id="popup-top" value="" />
         </div>
         <div class="field">
-          <label for="popup-bottom">下行文字</label>
+          <label for="popup-bottom">Bottom value</label>
           <input type="text" id="popup-bottom" value="" />
         </div>
         <div class="row">
-          <button id="popup-text-update">应用</button>
-          <button id="popup-text-reset" class="secondary">重置</button>
+          <button id="popup-text-update">Update</button>
+          <button id="popup-text-reset" class="secondary">Reset</button>
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>字号与边距</legend>
-        <div class="row">
-          <div class="field" style="flex: 1">
-            <label for="popup-top-size">上行字号 (pt)</label>
-            <input type="number" id="popup-top-size" min="6" max="24" step="0.5" value="11" />
-          </div>
-          <div class="field" style="flex: 1">
-            <label for="popup-bottom-size">下行字号 (pt)</label>
-            <input type="number" id="popup-bottom-size" min="6" max="24" step="0.5" value="11" />
-          </div>
+      <fieldset class="colors">
+        <legend>Font size</legend>
+        <div class="field">
+          <label for="popup-top-size">
+            Top line size (<span id="popup-top-size-value">11</span> pt)
+          </label>
+          <input type="range" id="popup-top-size" min="6" max="24" step="1" value="11" />
+        </div>
+        <div class="field">
+          <label for="popup-bottom-size">
+            Bottom line size (<span id="popup-bottom-size-value">11</span> pt)
+          </label>
+          <input type="range" id="popup-bottom-size" min="6" max="24" step="1" value="11" />
         </div>
         <div class="row">
-          <div class="field" style="flex: 1">
-            <label for="popup-pad-left">左边距 (px)</label>
+          <button id="popup-sizes">Apply sizes</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="colors">
+        <legend>Font family</legend>
+        <div class="field">
+          <label for="popup-top-family">Top line family (blank = system font)</label>
+          <input type="text" id="popup-top-family" value="" placeholder="System font" />
+        </div>
+        <div class="field">
+          <label for="popup-bottom-family">Bottom line family (blank = system font)</label>
+          <input type="text" id="popup-bottom-family" value="" placeholder="System font" />
+        </div>
+        <div class="row">
+          <button id="popup-families">Apply fonts</button>
+          <button id="popup-families-reset" class="secondary">Reset</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="colors">
+        <legend>Padding (physical px)</legend>
+        <div class="row">
+          <div class="field">
+            <label for="popup-pad-left">Left padding</label>
             <input type="number" id="popup-pad-left" min="0" max="24" step="1" value="4" />
           </div>
-          <div class="field" style="flex: 1">
-            <label for="popup-pad-right">右边距 (px)</label>
+          <div class="field">
+            <label for="popup-pad-right">Right padding</label>
             <input type="number" id="popup-pad-right" min="0" max="24" step="1" value="4" />
           </div>
         </div>
         <div class="row">
-          <button id="popup-sizes">应用字号</button>
-          <button id="popup-padding" class="secondary">应用边距</button>
+          <button id="popup-padding">Apply padding</button>
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>位置</legend>
+      <fieldset class="colors">
+        <legend>Side</legend>
         <div class="field">
-          <label for="popup-side">靠任务栏哪一侧</label>
+          <label for="popup-side">Side of the taskbar</label>
           <select id="popup-side">
-            <option value="left">left（贴开始按钮/最左）</option>
-            <option value="right" selected>right（贴通知区/托盘）</option>
+            <option value="left">left (taskbar left edge)</option>
+            <option value="right" selected>right (notification area)</option>
           </select>
         </div>
         <div class="row">
-          <button id="popup-side-apply">应用位置</button>
-          <button id="popup-side-reset" class="secondary">重置为 right</button>
+          <button id="popup-side-apply">Apply side</button>
+          <button id="popup-side-reset" class="secondary">Reset to right</button>
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>上行颜色</legend>
-        <div class="inline">
-          <select id="popup-top-color-type">
-            <option value="default">default（跟随系统）</option>
-            <option value="solid">solid（固定色）</option>
-          </select>
-          <input type="color" id="popup-top-color" value="#ffffff" disabled />
+      <fieldset class="colors">
+        <legend>Top line color</legend>
+        <div class="field">
+          <label for="popup-top-color">Color</label>
+          <input type="color" id="popup-top-color" value="#ffffff" />
         </div>
         <div class="field">
-          <label for="popup-top-hex">Hex</label>
-          <input type="text" id="popup-top-hex" value="#ffffff" disabled />
+          <label for="popup-top-hex">Hex (auto-filled, editable)</label>
+          <input type="text" id="popup-top-hex" value="#ffffff" />
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>下行颜色</legend>
-        <div class="inline">
-          <select id="popup-bottom-color-type">
-            <option value="default">default（跟随系统）</option>
-            <option value="solid">solid（固定色）</option>
-          </select>
-          <input type="color" id="popup-bottom-color" value="#ffffff" disabled />
+      <fieldset class="colors">
+        <legend>Bottom line color</legend>
+        <div class="field">
+          <label for="popup-bottom-color">Color</label>
+          <input type="color" id="popup-bottom-color" value="#ffffff" />
         </div>
         <div class="field">
-          <label for="popup-bottom-hex">Hex</label>
-          <input type="text" id="popup-bottom-hex" value="#ffffff" disabled />
+          <label for="popup-bottom-hex">Hex (auto-filled, editable)</label>
+          <input type="text" id="popup-bottom-hex" value="#ffffff" />
         </div>
         <div class="row">
-          <button id="popup-colors">应用颜色</button>
-          <button id="popup-reset-colors" class="secondary">重置默认</button>
+          <button id="popup-colors">Apply colors</button>
+          <button id="popup-reset-colors" class="secondary">Reset</button>
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>加粗</legend>
-        <div class="inline">
-          <label><input type="checkbox" id="popup-top-bold" /> 上行加粗</label>
+      <fieldset class="colors">
+        <legend>Bold</legend>
+        <div class="field">
+          <label><input type="checkbox" id="popup-top-bold" /> Bold top line</label>
         </div>
-        <div class="inline">
-          <label><input type="checkbox" id="popup-bottom-bold" /> 下行加粗</label>
+        <div class="field">
+          <label><input type="checkbox" id="popup-bottom-bold" /> Bold bottom line</label>
         </div>
         <div class="row">
-          <button id="popup-bold">应用加粗</button>
+          <button id="popup-bold">Apply bold</button>
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>对齐（每行独立）</legend>
+      <fieldset class="colors">
+        <legend>Alignment (per line)</legend>
         <div class="field">
-          <label for="popup-top-align">上行</label>
+          <label for="popup-top-align">Top line</label>
           <select id="popup-top-align">
-            <option value="0" selected>左</option>
-            <option value="1">中</option>
-            <option value="2">右</option>
+            <option value="0" selected>Left</option>
+            <option value="1">Center</option>
+            <option value="2">Right</option>
           </select>
         </div>
         <div class="field">
-          <label for="popup-bottom-align">下行</label>
+          <label for="popup-bottom-align">Bottom line</label>
           <select id="popup-bottom-align">
-            <option value="0" selected>左</option>
-            <option value="1">中</option>
-            <option value="2">右</option>
+            <option value="0" selected>Left</option>
+            <option value="1">Center</option>
+            <option value="2">Right</option>
           </select>
         </div>
         <div class="row">
-          <button id="popup-alignment">应用对齐</button>
+          <button id="popup-alignment">Apply alignment</button>
         </div>
       </fieldset>
 
       <div class="row">
-        <button id="popup-close" class="secondary">关闭</button>
+        <button id="popup-close" class="secondary">Close</button>
       </div>
     </div>
     <script type="module" src="/popup.js" defer></script>

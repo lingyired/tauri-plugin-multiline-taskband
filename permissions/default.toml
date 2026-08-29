@@ -1,16 +1,20 @@
 # Default permission set for tauri-plugin-multiline-taskband.
 #
-# Grants every command the plugin exposes. Tighten this in production by moving
-# to a scoped permission set that only allows the commands your app actually
-# uses.
+# Covers core rendering plus the read-only queries. High-impact commands
+# (remove, menu injection, popup window control) are intentionally NOT
+# included — grant them explicitly, e.g.
+# `multiline-taskband:allow-remove`.
+#
+# This matches the default set of the sibling multiline-menubar plugin, so an
+# app that targets both platforms gets the same baseline either way.
 
 [default]
-description = "Allows all multiline-taskband commands."
+description = "Default permissions for the multiline-taskband plugin (core rendering + read-only queries). High-impact commands (remove, menu injection, popup window control) are intentionally NOT included — grant them explicitly, e.g. `multiline-taskband:allow-remove`."
 permissions = [
   "allow-create",
-  "allow-remove",
   "allow-set-text",
   "allow-set-font-sizes",
+  "allow-set-font-family",
   "allow-set-padding",
   "allow-set-side",
   "allow-set-order",
@@ -21,10 +25,5 @@ permissions = [
   "allow-set-visible",
   "allow-rect",
   "allow-is-visible",
-  "allow-set-popup-window",
   "allow-set-auto-popup",
-  "allow-open-popup",
-  "allow-close-popup",
-  "allow-toggle-popup",
-  "allow-set-menu",
 ]
