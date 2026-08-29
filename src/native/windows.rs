@@ -1358,14 +1358,16 @@ fn render_line_alpha(text: &str, size_px: i32, bold: bool, face: Option<&str>) -
     }
     unsafe {
         SetTextColor(hdc, rgb_val(255, 255, 255));
-        // Shift the draw rectangle up by `lead` pixels so that the glyph
-        // (which sits in the lower portion of the full cell) is centred
-        // in our trimmed DIB.
+        // The DIB is exactly `h = full_h - lead` pixels tall, which matches
+        // the ink height (ascent + descent).  DT_TOP places the glyph top at
+        // rect.top, so a [0, h) rect puts the ink flush with the top of the
+        // DIB — the trimmed leading is no longer present, and the glyph is
+        // not clipped on either edge.
         let mut dr = RECT {
             left: 0,
-            top: -(lead as i32),
+            top: 0,
             right: w,
-            bottom: (full_h - lead) as i32,
+            bottom: h,
         };
         DrawTextW(
             hdc,
