@@ -33,6 +33,24 @@
 //!     re-asserts their z-order above the taskbar (pre-Win11-embedding
 //!     behaviour).
 //!
+//! Text rendering follows **TrafficMonitor's approach** exactly (see
+//! `docs/debug-text-rendering-clip.md` for the history):
+//!   * Every line band is the font's **full cell height** (tmHeight) — the
+//!     `tmInternalLeading` is never trimmed.
+//!   * Text is drawn with **`DT_VCENTER`** (TrafficMonitor's GDI path uses
+//!     `DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX`; its DirectWrite path uses
+//!     paragraph centre), so GDI centres the line and nothing is clipped.
+//!   * White-on-black rendering keeps the per-subpixel ClearType coverage and
+//!     the final colour is premultiplied by it — the same premultiplied
+//!     pixels TrafficMonitor's D2D path hands to `UpdateLayeredWindow`.
+//!   * Default font size is 9pt, TrafficMonitor's taskbar default, which fits
+//!     the full two-line cell stack inside the taskbar at 96dpi.
+//!   * A 3 s paint retry inside the keep-on-top timer re-issues every
+//!     window's `UpdateLayeredWindow` — a compositor safety net for display
+//!     drivers (e.g. Parallels) that can drop a layered surface even though
+//!     ULW reported success. Each attempt succeeds independently, so retries
+//!     converge to all overlays visible within a few seconds.
+//!
 //! NOTE: this module can only be compiled for `cfg(target_os = "windows")`.
 //! It is written against `windows-sys` 0.52 and has **not** been run on a
 //! Windows machine from this repo yet — see README.md for the verification
@@ -41,7 +59,7 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::os::windows::ffi::OsStrExt;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
@@ -83,8 +101,12 @@ fn rect_zero() -> RECT {
     }
 }
 
-/// `DT_TOP = 0` — explicit name for readability (DrawText vertical alignment).
-const DT_TOP: u32 = 0x00000000;
+/// `DT_VCENTER` — TrafficMonitor draws every label with
+/// `DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX` (`CDrawCommon::DrawWindowText`),
+/// letting GDI vertically centre the line inside its band. We mirror that
+/// exactly (see `render_line`); manual `DT_TOP` + baseline arithmetic is what
+/// clipped glyphs in earlier experiments.
+const DT_VCENTER: u32 = 0x00000004;
 
 // ---------------------------------------------------------------------------
 // Cross-thread plumbing
@@ -240,8 +262,11 @@ impl Default for Inst {
             bottom: String::new(),
             // Both lines share one default size; per-line sizes are the only
             // way to tune the vertical emphasis (no layout presets).
-            top_size: 11.0,
-            bottom_size: 11.0,
+            // 9pt matches TrafficMonitor's default taskbar font size — at 9pt
+            // the full cell height (tmHeight ≈ 16-17px @96dpi) fits inside the
+            // taskbar, which is what keeps the two-line layout clip-free.
+            top_size: 9.0,
+            bottom_size: 9.0,
             top_face: None,
             bottom_face: None,
             pad_left: PAD,
@@ -507,6 +532,17 @@ fn ui_thread(rx: Receiver<UiCommand>) {
 /// rect while the tray was rebuilding), a relayout is triggered to recompute
 /// positions — by then the taskbar is fully built and the tray edge is valid.
 fn keep_on_top() {
+    // Compositor safety net (observed with the Parallels display driver):
+    // `UpdateLayeredWindow` can report success while the surface never
+    // reaches the screen for a given window. Each attempt succeeds
+    // independently, so periodically re-issuing the paint makes every overlay
+    // converge to visible within a few seconds. Cheap: a few small DIBs every
+    // 3 s; hidden instances stay hidden (paint_inst re-applies SW_HIDE).
+    const PAINT_RETRY_EVERY_TICKS: u32 = 6; // 6 × 500 ms = 3 s
+    static PAINT_RETRY_TICK: AtomicU32 = AtomicU32::new(0);
+    if PAINT_RETRY_TICK.fetch_add(1, Ordering::Relaxed) % PAINT_RETRY_EVERY_TICKS == 0 {
+        paint_all();
+    }
     let taskbar = *TASKBAR_HWND.lock().unwrap_or_else(|e| e.into_inner());
     if taskbar == 0 {
         return;
@@ -1298,13 +1334,14 @@ fn measure_text(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i3
             DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX,
         )
     };
-    // Trim tmInternalLeading so that fonts with large line spacing (e.g.
-    // Microsoft YaHei) don't inflate the window height.  The glyph itself
-    // stays intact because the extra space is above the ink bounding box.
-    let mut tm: TEXTMETRICW = unsafe { std::mem::zeroed() };
-    unsafe { GetTextMetricsW(hdc, &mut tm) };
+    // Height = the font's full cell height (`r.bottom`, i.e. tmHeight).
+    // TrafficMonitor never trims `tmInternalLeading` away: every line band is
+    // the full cell and the text is vertically centred inside it with
+    // `DT_VCENTER`, so the glyph ink is always fully contained. Trimming the
+    // leading is exactly what used to clip descenders (the rect got shorter
+    // than the cell while `DT_TOP` anchored the baseline near the top).
     let w = r.right.max(1);
-    let h = (r.bottom.max(1) - tm.tmInternalLeading.max(0)).max(1);
+    let h = r.bottom.max(1);
     unsafe {
         SelectObject(hdc, old);
         DeleteObject(font);
@@ -1313,16 +1350,26 @@ fn measure_text(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i3
     (w, h)
 }
 
-/// Render a single line into a white-on-black DIB and return a per-pixel
-/// coverage (alpha) buffer. Because the text is white on black, every channel
-/// equals the coverage, so the red channel *is* the alpha — giving clean
-/// anti-aliased edges we can recolour to any target colour.
+/// Render a single line **the way TrafficMonitor does** (GDI path,
+/// `CDrawCommon::DrawWindowText`):
 ///
-/// When the system's text-smoothing is set to ClearType the RGB channels differ
-/// (sub-pixel rendering).  We average them so that the single-channel `alpha`
-/// stays neutral — using only the red channel would introduce a horizontal
-/// offset of ~⅓ pixel on ClearType-enabled systems.
-fn render_line_alpha(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i32, i32, Vec<u8>) {
+/// 1. The DIB is the font's **full cell height** (`full_h`) and the DrawText
+///    rect spans the whole cell (`[0, full_h)`). TrafficMonitor never trims
+///    `tmInternalLeading` — the leading is part of the cell and keeps the
+///    glyph ink away from the band edges.
+/// 2. Text is drawn with **`DT_VCENTER`** (TrafficMonitor uses
+///    `DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX`; its DirectWrite path uses
+///    paragraph centre for the same reason). GDI positions the line inside
+///    the band, so no manual baseline arithmetic — the `DT_TOP` + leading
+///    trim experiments in `docs/debug-text-rendering-clip.md` are what
+///    clipped glyph bottoms.
+/// 3. Text is drawn white on black, so each RGB channel of the result IS the
+///    per-subpixel ClearType coverage (the channels differ under ClearType).
+///    The raw coverage is returned instead of averaging it to grayscale —
+///    averaging is what made our text look softer than TrafficMonitor's.
+///    `blit_line` premultiplies the final colour by this per-channel coverage
+///    (the same premultiplied pixels TrafficMonitor's D2D path produces).
+fn render_line(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i32, i32, Vec<u32>) {
     let hdc = unsafe { CreateCompatibleDC(0) };
     let effective_face = face.or_else(|| default_face());
     let font = make_font(size_px, bold, effective_face.as_deref(), DEFAULT_QUALITY);
@@ -1343,53 +1390,42 @@ fn render_line_alpha(text: &str, size_px: i32, bold: bool, face: Option<&str>) -
     let w = r.right.max(1);
     let full_h = r.bottom.max(1);
 
-    // Trim tmInternalLeading (see measure_text for rationale).
-    let mut tm: TEXTMETRICW = unsafe { std::mem::zeroed() };
-    unsafe { GetTextMetricsW(hdc, &mut tm) };
-    let lead = tm.tmInternalLeading.max(0);
-    let h = (full_h - lead).max(1);
-
-    let (hbmp, bits) = create_dib(hdc, w, h);
+    // Full cell height, full rect — nothing to clip (see function docs).
+    let (hbmp, bits) = create_dib(hdc, w, full_h);
     let old_bmp = unsafe { SelectObject(hdc, hbmp) };
     // Fill opaque black, then draw white text.
     let bits_u32 = bits as *mut u32;
-    for i in 0..(w * h) as usize {
+    for i in 0..(w * full_h) as usize {
         unsafe { bits_u32.add(i).write(0xFF00_0000) };
     }
     unsafe {
         SetTextColor(hdc, rgb_val(255, 255, 255));
-        // The DIB is exactly `h = full_h - lead` pixels tall, which matches
-        // the ink height (ascent + descent).  DT_TOP places the glyph top at
-        // rect.top, so a [0, h) rect puts the ink flush with the top of the
-        // DIB — the trimmed leading is no longer present, and the glyph is
-        // not clipped on either edge.
         let mut dr = RECT {
             left: 0,
             top: 0,
             right: w,
-            bottom: h,
+            bottom: full_h,
         };
+        // DT_VCENTER, not DT_TOP — with a full-height rect GDI centres the
+        // line and nothing is clipped. Horizontal alignment is applied later,
+        // when the line is blitted into the window.
         DrawTextW(
             hdc,
             wtext.as_ptr(),
             -1,
             &mut dr,
-            DT_SINGLELINE | DT_NOPREFIX | DT_CENTER | DT_TOP,
+            DT_SINGLELINE | DT_NOPREFIX | DT_VCENTER,
         );
     }
 
-    // RGB-average coverage instead of red-only.  On ClearType this captures
-    // the full sub-pixel information without colour fringing; on grayscale AA
-    // it is identical to taking any single channel.
-    let mut alpha = vec![0u8; (w * h) as usize];
-    for (i, px) in unsafe { std::slice::from_raw_parts(bits_u32, (w * h) as usize) }
-        .iter()
-        .enumerate()
-    {
-        let r = ((*px >> 16) & 0xFF) as u32;
-        let g = (*px >> 8) & 0xFF;
-        let b = *px & 0xFF;
-        alpha[i] = ((r + g + b) / 3) as u8;
+    // Copy the raw white-on-black pixels: RGB = per-channel ClearType
+    // coverage (GDI never touches the DIB's alpha channel, which stays at the
+    // 0xFF we wrote above — the coverage lives in the colour channels).
+    let wu = w as usize;
+    let hu = full_h as usize;
+    let mut coverage = vec![0u32; wu * hu];
+    for i in 0..(wu * hu) {
+        coverage[i] = unsafe { *bits_u32.add(i) };
     }
 
     unsafe {
@@ -1399,7 +1435,7 @@ fn render_line_alpha(text: &str, size_px: i32, bold: bool, face: Option<&str>) -
         DeleteObject(font);
         DeleteDC(hdc);
     }
-    (w, h, alpha)
+    (w, full_h, coverage)
 }
 
 /// Return a locale-aware default font family name, or `None` to fall back
@@ -1487,7 +1523,9 @@ fn make_font(size_px: i32, bold: bool, face: Option<&str>, quality: u8) -> HFONT
         lfOutPrecision: OUT_DEFAULT_PRECIS,
         lfClipPrecision: CLIP_DEFAULT_PRECIS,
         lfQuality: quality,
-        lfPitchAndFamily: DEFAULT_PITCH,
+        // `DEFAULT_PITCH | FF_SWISS` matches TrafficMonitor's `FontInfo::Create`
+        // (variable-width sans-serif; only a hint once a face name is given).
+        lfPitchAndFamily: DEFAULT_PITCH | FF_SWISS,
         lfFaceName: face_name,
     };
     unsafe { CreateFontIndirectW(&lf) }
@@ -1567,13 +1605,13 @@ fn paint_inst(inst: &mut Inst) {
     let d = dpi();
     let top_sz = pt_to_px(inst.top_size, d);
     let bot_sz = pt_to_px(inst.bottom_size, d);
-    let (tw, th, top_alpha) = render_line_alpha(
+    let (tw, th, top_cov) = render_line(
         &inst.top,
         top_sz,
         inst.top_bold,
         inst.top_face.as_deref(),
     );
-    let (bw, bh, bot_alpha) = render_line_alpha(
+    let (bw, bh, bot_cov) = render_line(
         &inst.bottom,
         bot_sz,
         inst.bottom_bold,
@@ -1598,6 +1636,8 @@ fn paint_inst(inst: &mut Inst) {
     // (clicks fall through to the taskbar). alpha=1 is invisible to the eye
     // but makes the whole label area clickable, so left-click can open the
     // settings popup anywhere on the item (not just exactly on a glyph).
+    // TrafficMonitor's D2D path fills the same alpha=1 background
+    // (`FillRect(draw_rect, 0x00000000, 1)`).
     for i in 0..(w * h) as usize {
         unsafe { bits_u32.add(i).write(0x0100_0000) };
     }
@@ -1611,7 +1651,7 @@ fn paint_inst(inst: &mut Inst) {
         top_x as usize,
         tw as usize,
         th as usize,
-        &top_alpha,
+        &top_cov,
         tr,
         tg,
         tb,
@@ -1626,7 +1666,7 @@ fn paint_inst(inst: &mut Inst) {
         bot_x as usize,
         bw as usize,
         bh as usize,
-        &bot_alpha,
+        &bot_cov,
         br,
         bg,
         bb,
@@ -1695,7 +1735,12 @@ fn align_x(align: i32, line_w: i32, win_w: i32, pad_left: i32, pad_right: i32) -
     }
 }
 
-/// Composite one line's alpha buffer into the final bitmap at (off_x, off_y).
+/// Composite one line's white-on-black coverage into the final bitmap at
+/// (off_x, off_y). Each pixel's RGB channels are the per-subpixel ClearType
+/// coverage; the final colour is premultiplied by that per-channel coverage
+/// and the pixel's alpha is the average coverage — the premultiplied format
+/// `UpdateLayeredWindow` (AC_SRC_ALPHA) expects, and the same pixels
+/// TrafficMonitor's D2D path produces.
 #[allow(clippy::too_many_arguments)] // win32-style blit signature
 fn blit_line(
     dst: *mut u32,
@@ -1705,7 +1750,7 @@ fn blit_line(
     off_x: usize,
     line_w: usize,
     line_h: usize,
-    alpha: &[u8],
+    coverage: &[u32],
     r: u8,
     g: u8,
     b: u8,
@@ -1713,16 +1758,22 @@ fn blit_line(
     for ly in 0..line_h {
         let dy = off_y + ly;
         for lx in 0..line_w {
-            let a = alpha[ly * line_w + lx];
+            let px = coverage[ly * line_w + lx];
+            let cr = ((px >> 16) & 0xFF) as u32;
+            let cg = ((px >> 8) & 0xFF) as u32;
+            let cb = (px & 0xFF) as u32;
+            let a = ((cr + cg + cb) / 3) as u8;
             if a == 0 {
                 continue;
             }
             let dx = off_x + lx;
             let idx = dy * win_w + dx;
+            let ar = (r as u32 * cr) / 255;
+            let ag = (g as u32 * cg) / 255;
+            let ab = (b as u32 * cb) / 255;
             unsafe {
-                dst.add(idx).write(
-                    (a as u32) << 24 | (b as u32) | ((g as u32) << 8) | ((r as u32) << 16),
-                );
+                dst.add(idx)
+                    .write((a as u32) << 24 | ab | (ag << 8) | (ar << 16));
             }
         }
     }

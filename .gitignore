@@ -19,3 +19,6 @@ Thumbs.db
 
 # WorkBuddy local memory (per-project notes)
 .workbuddy/
+
+# ZCode local workspace files
+.zcode/

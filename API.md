@@ -77,7 +77,7 @@ All functions are async and return a `Promise`.
 | Function | Signature | Description |
 |---|---|---|
 | `setText` | `setText(options: SetTextOptions): Promise<void>` | Replace both lines of text. The window width re-measures automatically. |
-| `setFontSizes` | `setFontSizes(options: FontSizesOptions): Promise<void>` | Per-line font size in points (`top` / `bottom`, independent). Both lines default to `11`. |
+| `setFontSizes` | `setFontSizes(options: FontSizesOptions): Promise<void>` | Per-line font size in points (`top` / `bottom`, independent). Both lines default to `9` (TrafficMonitor's taskbar default). |
 | `setFontFamily` | `setFontFamily(options: SetFontFamilyOptions): Promise<void>` | Per-line font family. Pass `null` (or `''`) for a line to reset it to the system default font. Unknown family names fall back silently — same semantics as the menubar plugin. |
 | `setColors` | `setColors(options: SetColorsOptions): Promise<void>` | Per-line text paint. Each line takes a [ColorStyle](#colorstyle): `default` follows the system colour (tracks light/dark mode), `solid` is a `#rrggbb` value. |
 | `setBold` | `setBold(options: SetBoldOptions): Promise<void>` | Force the top and/or bottom line bold (`true` = bold, `false` = normal weight; each line independent). |
@@ -411,7 +411,7 @@ All commands serialise errors as strings; the possible variants are:
 
 - Error behaviour is asymmetric by design: the `set_*` commands silently no-op when given an unknown `id` (they are fire-and-forget), while the queries `rect` / `is_visible` reject an unknown `id` with `InstanceNotFound`.
 - All pixel values (padding, margin, `rect`) are **physical** pixels, not logical/DIP.
-- Font sizes are in **points**; both lines default to `11`. The window is sized automatically: width from the wider line plus padding, height from the sum of both line heights plus a fixed internal line gap.
+- Font sizes are in **points**; both lines default to `9` (matching TrafficMonitor's taskbar font). The window is sized automatically: width from the wider line plus padding, height from the sum of both lines' full cell heights plus a fixed internal line gap — the `tmInternalLeading` is deliberately not trimmed and each line is vertically centred with `DT_VCENTER`, so glyphs are never clipped (see `docs/debug-text-rendering-clip.md`).
 - Instances survive taskbar moves and explorer restarts: a `WinEventHook` on the taskbar re-lays-out every instance when the taskbar moves/resizes (DPI change, monitor change) and recreates overlays if the taskbar window is rebuilt. Clicking the taskbar does not hide the overlays (a keep-alive timer re-asserts topmost z-order when needed).
 - `set_margin` is global — it affects every instance, including ones created later. `set_padding` is per-instance.
 - `setEdgeMargins` is also global, and is clamped to `>= 0`: `left` offsets the left-side group's stacking start from `taskbar left edge + 2` and `right` offsets the right-side group's stacking start from the tray edge, so larger values push each whole group further into the free taskbar space. Both default to `0`; on vertical taskbars they are ignored.

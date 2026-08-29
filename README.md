@@ -82,8 +82,8 @@ import {
 // A "holding group" on the RIGHT edge, value emphasised via a larger font.
 await create({ id: 'group-a', side: 'right', top: 'A股', bottom: '+1.23%' })
 // Per-line font sizes (points) are the only vertical control — no layout
-// presets. Both lines default to 11pt.
-await setFontSizes({ id: 'group-a', top: 11, bottom: 13 })
+// presets. Both lines default to 9pt (TrafficMonitor's taskbar default).
+await setFontSizes({ id: 'group-a', top: 9, bottom: 11 })
 // Per-instance horizontal padding in physical pixels (default 4/4).
 await setPadding({ id: 'group-a', left: 6, right: 6 })
 await setColors({ id: 'group-a', top: { type: 'default' }, bottom: { type: 'solid', value: '#FF4F44' } })
