@@ -6,6 +6,8 @@ It is designed for apps like **fund01** that want to show several groups of hold
 
 > **Status:** scaffold complete, Win32 implementation written against `windows-sys` 0.52, **compiled and verified on Windows 11 (build 26200, ARM64)** via `examples/demo`. Windows 10 verification pending — see [Verification checklist](#verification-checklist) below.
 
+📖 **Full API reference:** [API.md](API.md) — all guest-js functions, types, events, raw invoke commands, Rust API and permissions.
+
 ## How it works
 
 The approach is borrowed from [TrafficMonitor](https://github.com/zhongyang219/TrafficMonitor)'s **Win11** path (see `Win11TaskbarDlg.cpp`): instead of hacking the taskbar's window tree (which is fragile and effectively impossible on Win11), each instance is its **own top-level layered window** overlaid on the taskbar:
@@ -69,6 +71,8 @@ pnpm add ../tauri-plugin-multiline-taskband
 ```
 
 ### 3. Use it (fund01 example)
+
+> All functions, types and events are documented in [API.md](API.md).
 
 ```ts
 import {
