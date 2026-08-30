@@ -1,6 +1,6 @@
 [package]
 name = "tauri-plugin-multiline-taskband"
-version = "0.1.0"
+version = "1.0.0"
 authors = [ "tauri-plugin-multiline-taskband" ]
 description = "A Tauri plugin that renders two-line text labels on the left and right edges of the Windows taskbar."
 edition = "2021"

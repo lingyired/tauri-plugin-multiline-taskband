@@ -1,6 +1,6 @@
 {
   "name": "tauri-plugin-multiline-taskband-api",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "author": "tauri-plugin-multiline-taskband",
   "description": "JS/TS API for the multiline-taskband Tauri plugin (Windows).",
   "type": "module",
