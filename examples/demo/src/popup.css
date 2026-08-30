@@ -148,6 +148,12 @@ body {
   justify-content: space-between;
 }
 
+/* a line switched off via "Show" dims its section's edit controls (the
+   switch itself stays full-strength so it remains the obvious way back) */
+.line-sec.line-off > :not(.sec-head) {
+  opacity: 0.45;
+}
+
 /* live dot beside the section label: previews the line's effective color */
 .line-dot {
   display: inline-block;

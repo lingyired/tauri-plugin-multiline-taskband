@@ -116,11 +116,12 @@ pnpm build        # rollup 产出 dist-js/，demo 前端 import 用
 
 ## 6. API 速查（已落地命令）
 
-`create(id, side)` · `remove(id)` · `set_text(id, top, bottom)` · `set_font_sizes(id, top, bottom)` · `set_padding(id, left, right)` · `set_side(id, side)` · `set_order(id, order)` · `set_margin(margin)` · `set_colors(id, top, bottom)` · `set_bold(id, top, bottom)` · `set_alignment(id, top, bottom)` · `set_visible(id, visible)` · `rect(id)` · `is_visible(id)` · `set_popup_window(label)` · `set_auto_popup(enabled)` · `open_popup(id)` · `close_popup(id)` · `toggle_popup(id)`
+`create(id, side)` · `remove(id)` · `set_text(id, top, bottom)` · `set_font_sizes(id, top, bottom)` · `set_padding(id, left, right)` · `set_side(id, side)` · `set_order(id, order)` · `set_margin(margin)` · `set_colors(id, top, bottom)` · `set_bold(id, top, bottom)` · `set_alignment(id, top, bottom)` · `set_visible(id, visible)` · `set_line_visible(id, top, bottom)` · `rect(id)` · `is_visible(id)` · `set_popup_window(label)` · `set_auto_popup(enabled)` · `open_popup(id)` · `close_popup(id)` · `toggle_popup(id)`
 
 - `Side`：`"left"` / `"right"`（默认 right）。`set_side` 可把已存在实例动态挪到另一侧（不重建，保留 order）。
 - `set_order`：同侧实例按 `order` 升序排开（默认=创建顺序）；交换相邻 order 值即可实现上移/下移。
 - `set_margin`：全局实例间距（物理 px，默认 4）；行内两行文字间距是固定内部样式（`LINE_GAP`），不受影响。
+- `set_line_visible`：单行显示/隐藏（top/bottom 各自独立，默认全显示）。隐藏一行 → 实例窗口收缩为另一行、由 `center_y` 自动在任务栏**垂直居中**；两行都隐藏 → 等同整实例隐藏（窗口 SW_HIDE、relayout 不占位），但实例级 `visible` 标志不变，重新显示任一行即恢复。`is_visible` 仍返回实例级标志；单行状态经 `popup-open` 快照的 `topVisible`/`bottomVisible` 下发。
 
 - `Side`：`"left"` / `"right"`（默认 right）。
 - `ColorStyle`：`{ "type": "default" }` 跟随系统明暗；`{ "type": "solid", "value": "#FF4F44" }` 固定色。
@@ -141,6 +142,7 @@ pnpm build        # rollup 产出 dist-js/，demo 前端 import 用
 | 左/右手法 | Win10 挤开任务列表；Win11 叠加 | 统一叠加（两端通用） |
 | 交互 | 可点击、可拖 | v2 可点击（左键弹 popup，右键发 click 事件）；背景 alpha=1 trick 保命中 |
 | 渲染 | D2D / GDI 双后端 | 仅 GDI + 分层窗口 |
+| 行可见性 | 无（文本留空仍占一整行） | `set_line_visible` 单行隐藏：单行时窗口收缩并垂直居中，双隐藏=整实例隐藏且不占位 |
 | 多实例 | 单一 | N 实例，按 id/side 多分组 |
 | 平台 | Windows 专用 | Tauri 插件，macOS 另由 multiline-menubar 承担 |
 

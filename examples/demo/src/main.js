@@ -353,6 +353,13 @@ async function applyAppearance(id) {
       })
     );
   }
+  if (s.topShown === false || s.bottomShown === false) {
+    jobs.push(
+      invoke("plugin:multiline-taskband|set_line_visible", {
+        payload: { id, top: s.topShown !== false, bottom: s.bottomShown !== false },
+      })
+    );
+  }
   await Promise.all(jobs).catch((err) => console.error(`applyAppearance ${id}:`, err));
 }
 
@@ -485,8 +492,10 @@ function instanceRow(id, preset) {
   chip.title = `"${s.top}" / "${s.bottom}"`;
   chip.style.paddingLeft = `${Math.min(s.leftPadding ?? 4, 12)}px`;
   chip.style.paddingRight = `${Math.min(s.rightPadding ?? 4, 12)}px`;
-  chip.appendChild(chipLine(s.top, s, "top"));
-  chip.appendChild(chipLine(s.bottom, s, "bottom"));
+  // hidden lines render nothing — matching the taskband, where the chip
+  // shrinks to the remaining line (both off = no chip at all)
+  if (s.topShown !== false) chip.appendChild(chipLine(s.top, s, "top"));
+  if (s.bottomShown !== false) chip.appendChild(chipLine(s.bottom, s, "bottom"));
 
   const info = document.createElement("div");
   info.className = "instance-info";

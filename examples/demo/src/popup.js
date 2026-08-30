@@ -44,6 +44,8 @@ if (!window.__TAURI__) {
               bottomBold: true,
               topAlign: 2,
               bottomAlign: 2,
+              topVisible: true,
+              bottomVisible: true,
               side: "right",
             },
           });
@@ -103,6 +105,8 @@ const els = {
   bottomHex: $("popup-bottom-hex"),
   topBold: $("popup-top-bold"),
   bottomBold: $("popup-bottom-bold"),
+  topShown: $("popup-top-shown"),
+  bottomShown: $("popup-bottom-shown"),
   padLeft: $("popup-pad-left"),
   padRight: $("popup-pad-right"),
 };
@@ -133,6 +137,7 @@ function renderPreview() {
     {
       el: els.simTop,
       dot: els.topDot,
+      shown: els.topShown.checked,
       text: els.top.value,
       size: Number(els.topSize.value) || 11,
       bold: els.topBold.checked,
@@ -144,6 +149,7 @@ function renderPreview() {
     {
       el: els.simBottom,
       dot: els.bottomDot,
+      shown: els.bottomShown.checked,
       text: els.bottom.value,
       size: Number(els.bottomSize.value) || 11,
       bold: els.bottomBold.checked,
@@ -154,6 +160,9 @@ function renderPreview() {
     },
   ];
   for (const l of lines) {
+    // A hidden line vanishes from the strip — on the taskbar the instance
+    // shrinks to the remaining line, which the strip shows naturally.
+    l.el.style.display = l.shown ? "" : "none";
     l.el.textContent = l.text || "\u00a0";
     // pt -> px at ~1.05, clamped so the preview strip keeps its shape
     l.el.style.fontSize = `${Math.min(Math.max(Math.round(l.size * 1.05), 8), 17)}px`;
@@ -162,6 +171,7 @@ function renderPreview() {
     l.el.style.fontFamily = l.family ? `'${l.family}'` : "";
     l.el.style.color = l.solid ? l.color : "var(--tb-ink)";
     l.dot.style.background = l.solid ? l.color : "var(--tb-ink)";
+    l.dot.style.opacity = l.shown ? "" : "0.3";
   }
   const left = Math.min(Math.max(parseInt(els.padLeft.value, 10) || 0, 0), 24);
   const right = Math.min(Math.max(parseInt(els.padRight.value, 10) || 0, 0), 24);
@@ -236,6 +246,18 @@ const applyAlignment = () =>
     { top: alignSel.top, bottom: alignSel.bottom },
     { topAlign: alignSel.top, bottomAlign: alignSel.bottom },
   );
+const applyLineVisible = () => {
+  const top = els.topShown.checked;
+  const bottom = els.bottomShown.checked;
+  apply("set_line_visible", { top, bottom }, { topShown: top, bottomShown: bottom });
+};
+
+// Dim a line section's edit controls while its "Show" switch is off.
+function syncLineDim() {
+  for (const [line, shown] of [["top", els.topShown], ["bottom", els.bottomShown]]) {
+    shown.closest(".line-sec").classList.toggle("line-off", !shown.checked);
+  }
+}
 const applyPadding = () => {
   const left = padVal(els.padLeft);
   const right = padVal(els.padRight);
@@ -267,6 +289,10 @@ function fill(p) {
 
   els.topBold.checked = !!p.topBold;
   els.bottomBold.checked = !!p.bottomBold;
+  // Per-line visibility: absent (older plugin builds) means shown.
+  els.topShown.checked = p.topVisible !== false;
+  els.bottomShown.checked = p.bottomVisible !== false;
+  syncLineDim();
   alignSel.top = Number(p.topAlign) || 0;
   alignSel.bottom = Number(p.bottomAlign) || 0;
   setPressed(segGroups["align-top"], alignSel.top, "align");
@@ -308,6 +334,8 @@ function fill(p) {
     bottomBold: !!p.bottomBold,
     topAlign: Number(p.topAlign) || 0,
     bottomAlign: Number(p.bottomAlign) || 0,
+    topShown: els.topShown.checked,
+    bottomShown: els.bottomShown.checked,
   };
   persistState();
   renderPreview();
@@ -386,6 +414,16 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Per-line "Show" switches: hide that line on the taskbar (the other one
+  // re-centres; both off = the whole item disappears).
+  for (const shown of [els.topShown, els.bottomShown]) {
+    shown.addEventListener("change", () => {
+      applyLineVisible();
+      syncLineDim();
+      renderPreview();
+    });
+  }
+
   // Alignment segmented buttons.
   for (const line of lineNames) {
     segGroups[`align-${line}`].addEventListener("click", (e) => {
@@ -438,6 +476,9 @@ window.addEventListener("DOMContentLoaded", () => {
     els.bottomSolidRow.hidden = true;
     els.topBold.checked = false;
     els.bottomBold.checked = false;
+    els.topShown.checked = true;
+    els.bottomShown.checked = true;
+    syncLineDim();
     alignSel.top = 0;
     alignSel.bottom = 0;
     setPressed(segGroups["align-top"], 0, "align");
@@ -456,6 +497,9 @@ window.addEventListener("DOMContentLoaded", () => {
       invoke("plugin:multiline-taskband|set_bold", { payload: { id, top: false, bottom: false } }),
       invoke("plugin:multiline-taskband|set_alignment", { payload: { id, top: 0, bottom: 0 } }),
       invoke("plugin:multiline-taskband|set_padding", { payload: { id, left: 4, right: 4 } }),
+      invoke("plugin:multiline-taskband|set_line_visible", {
+        payload: { id, top: true, bottom: true },
+      }),
     ])
       .then(() => {
         Object.assign(currentState, {
@@ -473,6 +517,8 @@ window.addEventListener("DOMContentLoaded", () => {
           bottomBold: false,
           topAlign: 0,
           bottomAlign: 0,
+          topShown: true,
+          bottomShown: true,
         });
         persistState();
         flashSaved(true);

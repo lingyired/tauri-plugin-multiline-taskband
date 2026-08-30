@@ -19,9 +19,12 @@
 //                                      // demo derives each side's set_order
 //                                      // keys from this sequence)
 //   }
-// Instance: { shown, side, top, bottom, topSize, bottomSize,
-//             topFontFamily, bottomFontFamily, leftPadding, rightPadding,
-//             topColor, bottomColor, topBold, bottomBold, topAlign, bottomAlign }
+// Instance: { shown, topShown, bottomShown, side, top, bottom, topSize,
+//             bottomSize, topFontFamily, bottomFontFamily, leftPadding,
+//             rightPadding, topColor, bottomColor, topBold, bottomBold,
+//             topAlign, bottomAlign }
+// `shown` hides the whole instance; `topShown`/`bottomShown` hide individual
+// lines (both false = the instance renders nothing, like shown === false).
 //
 // The pre-settings-v1 key (which only stored shown/hidden) is read as a
 // migration fallback when the new key does not exist yet. An older shape that
@@ -54,6 +57,8 @@ export const PRESETS = [
 export function instanceDefaults(id, side = "right") {
   return {
     shown: true,
+    topShown: true,
+    bottomShown: true,
     side,
     top: id,
     bottom: id,
