@@ -1,12 +1,19 @@
-// Multiline Taskband demo frontend — mirrors the multiline-menubar demo's UX:
-// a fixed set of preset instances, each listed as one compact row (name, text,
-// side, settings, visibility). All per-instance appearance editing happens in
-// the popup window opened from the taskbar item (or the row's Settings button).
+// Multiline Taskband demo frontend — a console for the preset instances plus
+// any runtime-created ones. Each row renders the instance as the two-line
+// chip it actually draws on the taskbar (real color / weight / size), with a
+// side-tinted edge marker; all per-instance appearance editing happens in the
+// popup window opened from the taskbar item (or the row's gear).
+//
+// Ordering: rows are drag-reorderable (grip handle, or ↑/↓ on it). The list
+// sequence is the layout order per side — after a reorder the demo derives
+// 0..n keys for the affected side and pushes them via set_order, which the
+// plugin uses to relayout that side's instances.
 //
 // Persistence: every setting the user changes (global margin, per-instance
-// text/appearance/side, shown/hidden, runtime-created instances) is written
-// to localStorage right away (see settings.js) and re-applied to the plugin
-// on the next launch, so the taskbar looks exactly like it did last session.
+// text/appearance/side, shown/hidden, list order, runtime-created instances)
+// is written to localStorage right away (see settings.js) and re-applied to
+// the plugin on the next launch, so the taskbar looks exactly like it did
+// last session.
 import {
   DEFAULT_EDGE_MARGIN,
   DEFAULT_MARGIN,
@@ -16,6 +23,46 @@ import {
   saveSettings,
 } from "./settings.js";
 
+// Browser preview shim: opened as plain HTML (outside Tauri) the console
+// still renders with mocked plugin calls so layout work doesn't need Windows.
+// Never active inside the real app.
+if (!window.__TAURI__) {
+  // Seed a believable demo state (first plain-browser visit only) so the
+  // chip previews show real colors/weights instead of blank defaults.
+  try {
+    if (!window.localStorage.getItem("multiline-taskband-demo:settings-v1")) {
+      window.localStorage.setItem(
+        "multiline-taskband-demo:settings-v1",
+        JSON.stringify({
+          margin: 4,
+          leftEdgeMargin: 0,
+          rightEdgeMargin: 0,
+          instances: {
+            "mb-1": { side: "left", top: "HOLDINGS A", bottom: "+1.23%", bottomColor: { type: "solid", value: "#18a058" }, bottomBold: true },
+            "mb-2": { side: "left", top: "HOLDINGS B", bottom: "-0.87%", bottomColor: { type: "solid", value: "#e5484d" } },
+            "mb-3": { side: "right", top: "BTC", bottom: "¥412,300" },
+            "mb-4": { side: "right", top: "QQQ", bottom: "318.42", topAlign: 2, bottomAlign: 2 },
+            "mb-5": { side: "right", shown: false },
+          },
+          order: ["mb-1", "mb-2", "mb-3", "mb-4", "mb-5"],
+        })
+      );
+    }
+  } catch (_) {}
+  window.__TAURI__ = {
+    core: {
+      invoke: async (cmd, args) => {
+        console.debug("[preview]", cmd, args?.payload ?? args);
+        return null;
+      },
+    },
+    event: {
+      listen: async () => async () => {},
+    },
+  };
+}
+
+window.addEventListener("error", (e) => { document.title = "ERR: " + e.message + " @L" + e.lineno; });
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
@@ -31,6 +78,151 @@ const { listen } = window.__TAURI__.event;
 let settings = loadSettings(PRESETS);
 
 const created = new Set(); // ids whose overlay window exists on the taskbar
+const presetIds = new Set(PRESETS.map((p) => p.id));
+
+// ---------------------------------------------------------------------------
+// List order — the list sequence is the per-side layout order on the taskbar.
+// The plugin sorts same-side instances by an ascending per-instance key
+// (`set_order`); whenever a side's relative sequence changes in the list, the
+// side's keys are re-derived (0..n) and pushed to the plugin.
+// ---------------------------------------------------------------------------
+
+function sideSequence(side) {
+  return settings.order.filter(
+    (id) => created.has(id) && settings.instances[id] && settings.instances[id].side === side,
+  );
+}
+
+function applySideSequence(side) {
+  sideSequence(side).forEach((id, index) => {
+    invoke("plugin:multiline-taskband|set_order", { payload: { id, order: index } }).catch(
+      (err) => console.error(`set_order ${id}:`, err),
+    );
+  });
+}
+
+/**
+ * Apply one mutation to settings.order, then persist, re-render and resequence
+ * every side whose relative order changed. `focusId` re-focuses that row's
+ * grip afterwards so keyboard reordering can continue.
+ */
+function commitOrder(mutate, focusId) {
+  const before = { left: sideSequence("left"), right: sideSequence("right") };
+  if (mutate() === false) return;
+  persist();
+  renderList();
+  updateStatus();
+  const changed = [];
+  for (const side of ["left", "right"]) {
+    if (before[side].join("|") !== sideSequence(side).join("|")) {
+      applySideSequence(side);
+      changed.push(side);
+    }
+  }
+  if (changed.length) {
+    log(`Order updated — ${changed.join(" + ")} side resequenced on the taskbar`);
+  }
+  if (focusId) {
+    const grip = document.querySelector(
+      `.instance-row[data-id="${CSS.escape(focusId)}"] .grip-btn`,
+    );
+    if (grip) grip.focus();
+  }
+}
+
+/** Swap a row with its neighbor in the list (keyboard reorder). */
+function moveBy(id, delta) {
+  const order = settings.order;
+  const from = order.indexOf(id);
+  const to = from + delta;
+  if (from === -1 || to < 0 || to >= order.length) return false;
+  [order[from], order[to]] = [order[to], order[from]];
+  return true;
+}
+
+// --- drag & drop (rows only become draggable while the grip is held) --------
+
+let dragState = null; // { id } while a grip-initiated drag is active
+let dropTarget = null; // { id, place: "before" | "after" } from the last dragover
+
+function clearDropIndicators() {
+  for (const li of document.querySelectorAll(".instance-row")) {
+    li.classList.remove("drop-above", "drop-below");
+  }
+}
+
+function bindListDnd(ul) {
+  ul.addEventListener("dragstart", (e) => {
+    const li = e.target.closest?.(".instance-row");
+    if (!li || !li.draggable) {
+      e.preventDefault();
+      return;
+    }
+    dragState = { id: li.dataset.id };
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragState.id);
+    li.classList.add("dragging");
+  });
+
+  ul.addEventListener("dragover", (e) => {
+    if (!dragState) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    clearDropIndicators();
+    const li = e.target.closest?.(".instance-row");
+    if (li && li.dataset.id === dragState.id) {
+      dropTarget = null; // dropping back onto the dragged row: no-op
+      return;
+    }
+    if (!li) {
+      // below all rows: offer the end of the list
+      const last = [...ul.querySelectorAll(".instance-row:not(.dragging)")].at(-1);
+      dropTarget = last ? { id: last.dataset.id, place: "after" } : null;
+      if (last) last.classList.add("drop-below");
+      return;
+    }
+    const rect = li.getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    li.classList.add(before ? "drop-above" : "drop-below");
+    dropTarget = { id: li.dataset.id, place: before ? "before" : "after" };
+  });
+
+  ul.addEventListener("dragleave", (e) => {
+    if (!dragState || ul.contains(e.relatedTarget)) return;
+    clearDropIndicators();
+    dropTarget = null;
+  });
+
+  ul.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const target = dropTarget;
+    clearDropIndicators();
+    if (!dragState || !target || target.id === dragState.id) return;
+    const src = dragState.id;
+    commitOrder(() => {
+      const order = settings.order;
+      const from = order.indexOf(src);
+      if (from === -1) return false;
+      order.splice(from, 1);
+      let to = order.indexOf(target.id);
+      if (to === -1) return false;
+      if (target.place === "after") to += 1;
+      order.splice(to, 0, src);
+      return true;
+    });
+  });
+
+  ul.addEventListener("dragend", (e) => {
+    const li = e.target.closest?.(".instance-row");
+    if (li) {
+      li.classList.remove("dragging");
+      li.draggable = false;
+    }
+    dragState = null;
+    dropTarget = null;
+    clearDropIndicators();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Persistence helpers
@@ -63,10 +255,13 @@ async function createInstance(p) {
   }).catch(() => {});
   await listen(`multiline-taskband://${p.id}//popup-close`, () => {
     log(`${p.id} — settings popup closed`);
-    // The popup may have changed text/side/appearance; re-read and refresh.
+    // The popup may have changed text/side/appearance; re-read, refresh, and
+    // re-apply the per-side layout keys (a side switch lands by creation key).
     refreshFromStorage();
     renderList();
     updateStatus();
+    applySideSequence("left");
+    applySideSequence("right");
   }).catch(() => {});
   await listen(`multiline-taskband://${p.id}//menu`, (e) => {
     log(`${p.id} menu: ${e.payload.itemId}`);
@@ -188,7 +383,7 @@ async function removeInstance(id) {
   }).catch((err) => console.error(`remove ${id}:`, err));
   created.delete(id);
   delete settings.instances[id];
-  settings.customOrder = settings.customOrder.filter((x) => x !== id);
+  settings.order = settings.order.filter((x) => x !== id);
   persist();
   renderList();
   updateStatus();
@@ -198,19 +393,56 @@ async function removeInstance(id) {
 // UI
 // ---------------------------------------------------------------------------
 
+const ALIGN_NAMES = ["left", "center", "right"];
+const GEAR_SVG = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+  stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+  <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
+  <path d="M10 2.7v3.6M5.5 6.2v3.6M11 9.7v3.6"/>
+</svg>`;
+
 function renderList() {
   const ul = document.querySelector("#instance-list");
   if (!ul) return;
   ul.innerHTML = "";
-  for (const p of PRESETS) {
-    if (created.has(p.id)) ul.appendChild(instanceRow(p.id, true));
-  }
-  for (const id of settings.customOrder) {
+  for (const id of settings.order) {
     if (created.has(id) && settings.instances[id]) {
-      ul.appendChild(instanceRow(id, false));
+      ul.appendChild(instanceRow(id, presetIds.has(id)));
     }
   }
 }
+
+/** One line of the mini taskband chip, styled with the instance's settings. */
+function chipLine(text, s, which) {
+  const span = document.createElement("span");
+  span.className = "chip-line";
+  const size = which === "top" ? s.topSize : s.bottomSize;
+  const bold = which === "top" ? s.topBold : s.bottomBold;
+  const align = which === "top" ? s.topAlign : s.bottomAlign;
+  const family = which === "top" ? s.topFontFamily : s.bottomFontFamily;
+  const color = which === "top" ? s.topColor : s.bottomColor;
+  span.textContent = text || "\u00a0";
+  span.style.fontSize = `${Math.min(Math.max(Math.round(size * 1.05), 8), 13)}px`;
+  span.style.fontWeight = bold ? "700" : "400";
+  span.style.textAlign = ALIGN_NAMES[align] || "left";
+  if (family) span.style.fontFamily = `'${family}'`;
+  if (color && color.type === "solid") span.style.color = color.value;
+  return span;
+}
+
+function colorDot(color, label) {
+  const dot = document.createElement("span");
+  dot.className = "color-dot";
+  dot.title = label;
+  if (color && color.type === "solid") dot.style.background = color.value;
+  else dot.classList.add("sys");
+  return dot;
+}
+
+const GRIP_SVG = `<svg viewBox="0 0 8 14" width="8" height="14" fill="currentColor" aria-hidden="true">
+  <circle cx="2" cy="2" r="1.3"/><circle cx="6" cy="2" r="1.3"/>
+  <circle cx="2" cy="7" r="1.3"/><circle cx="6" cy="7" r="1.3"/>
+  <circle cx="2" cy="12" r="1.3"/><circle cx="6" cy="12" r="1.3"/>
+</svg>`;
 
 function instanceRow(id, preset) {
   const s = settings.instances[id];
@@ -218,39 +450,109 @@ function instanceRow(id, preset) {
 
   const li = document.createElement("li");
   li.className = "instance-row";
+  li.dataset.id = id;
+  li.dataset.side = s.side;
   if (s.shown === false) li.classList.add("row-hidden");
 
+  // side-tinted edge marker (amber = Start side, teal = tray side)
+  const marker = document.createElement("span");
+  marker.className = "edge-marker";
+  marker.setAttribute("aria-hidden", "true");
+
+  // reorder grip: arms the row for native dragging while held; ↑/↓ moves it
+  const grip = document.createElement("button");
+  grip.type = "button";
+  grip.className = "grip-btn";
+  grip.title = "Drag to reorder — or press ↑ / ↓";
+  grip.setAttribute("aria-label", `Reorder ${id}`);
+  grip.innerHTML = GRIP_SVG;
+  grip.addEventListener("mousedown", () => {
+    li.draggable = true;
+    window.addEventListener("mouseup", () => {
+      li.draggable = false;
+    }, { once: true });
+  });
+  grip.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    commitOrder(() => moveBy(id, e.key === "ArrowUp" ? -1 : 1), id);
+  });
+
+  // the instance rendered as its own two-line taskband chip
+  const chip = document.createElement("span");
+  chip.className = "taskband-chip";
+  chip.setAttribute("aria-hidden", "true");
+  chip.title = `"${s.top}" / "${s.bottom}"`;
+  chip.style.paddingLeft = `${Math.min(s.leftPadding ?? 4, 12)}px`;
+  chip.style.paddingRight = `${Math.min(s.rightPadding ?? 4, 12)}px`;
+  chip.appendChild(chipLine(s.top, s, "top"));
+  chip.appendChild(chipLine(s.bottom, s, "bottom"));
+
+  const info = document.createElement("div");
+  info.className = "instance-info";
   const name = document.createElement("span");
   name.className = "instance-name";
   name.textContent = id;
+  const meta = document.createElement("span");
+  meta.className = "instance-meta";
+  const sideLabel = document.createElement("span");
+  sideLabel.textContent = s.side;
+  const sizeLabel = document.createElement("span");
+  sizeLabel.className = "mono";
+  sizeLabel.textContent = `${s.topSize}/${s.bottomSize} pt`;
+  meta.append(
+    sideLabel,
+    document.createTextNode("·"),
+    sizeLabel,
+    document.createTextNode("·"),
+    colorDot(s.topColor, "Top line color"),
+    colorDot(s.bottomColor, "Bottom line color"),
+  );
+  info.appendChild(name);
+  info.appendChild(meta);
 
-  const text = document.createElement("span");
-  text.className = "instance-text muted";
-  text.textContent = `"${s.top}" / "${s.bottom}"`;
+  const controls = document.createElement("div");
+  controls.className = "instance-controls";
 
   // left/right side switcher — taskband-specific (the menubar plugin has no
   // side concept; this is the left/right setting unique to the taskband).
-  const side = document.createElement("select");
-  side.className = "instance-side";
-  side.title = "Left/right side of the taskbar";
-  side.innerHTML = `
-    <option value="left" ${s.side === "left" ? "selected" : ""}>left</option>
-    <option value="right" ${s.side === "right" ? "selected" : ""}>right</option>
-  `;
-  side.addEventListener("change", (e) => {
-    s.side = e.target.value;
-    persist();
-    invoke("plugin:multiline-taskband|set_side", {
-      payload: { id, side: e.target.value },
-    }).catch((err) => console.error(`set_side ${id}:`, err));
-  });
+  const seg = document.createElement("div");
+  seg.className = "seg sm";
+  seg.setAttribute("role", "group");
+  seg.setAttribute("aria-label", `Side of ${id}`);
+  for (const sideVal of ["left", "right"]) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = sideVal === "left" ? "L" : "R";
+    btn.title =
+      sideVal === "left" ? "Left edge (next to Start)" : "Right edge (next to the tray)";
+    btn.setAttribute("aria-pressed", String(s.side === sideVal));
+    btn.addEventListener("click", () => {
+      if (s.side === sideVal) return;
+      s.side = sideVal;
+      persist();
+      invoke("plugin:multiline-taskband|set_side", {
+        payload: { id, side: sideVal },
+      })
+        .then(() => {
+          // a side switch lands by creation key — resequence both sides so
+          // the taskbar keeps following the list order
+          applySideSequence("left");
+          applySideSequence("right");
+        })
+        .catch((err) => console.error(`set_side ${id}:`, err));
+      renderList();
+    });
+    seg.appendChild(btn);
+  }
 
   // Open this instance's settings popup without having to click the taskbar.
   const settingsBtn = document.createElement("button");
   settingsBtn.type = "button";
-  settingsBtn.className = "settings-btn";
-  settingsBtn.textContent = "Settings";
+  settingsBtn.className = "icon-btn settings-btn";
   settingsBtn.title = "Open this instance's settings popup";
+  settingsBtn.setAttribute("aria-label", `Settings for ${id}`);
+  settingsBtn.innerHTML = GEAR_SVG;
   settingsBtn.addEventListener("click", () => {
     invoke("plugin:multiline-taskband|open_popup", {
       payload: { id },
@@ -259,32 +561,38 @@ function instanceRow(id, preset) {
 
   const switchLabel = document.createElement("label");
   switchLabel.className = "switch";
-  switchLabel.title = "Show / hide this taskbar item";
+  switchLabel.title = "Show / hide this taskband item";
   const toggle = document.createElement("input");
   toggle.type = "checkbox";
   toggle.checked = s.shown !== false;
+  toggle.setAttribute("aria-label", `Show ${id}`);
   toggle.addEventListener("change", () => setInstanceVisible(id, toggle.checked));
   const slider = document.createElement("span");
   slider.className = "slider";
   switchLabel.appendChild(toggle);
   switchLabel.appendChild(slider);
 
-  li.appendChild(name);
-  li.appendChild(text);
-  li.appendChild(side);
-  li.appendChild(settingsBtn);
-  li.appendChild(switchLabel);
+  controls.appendChild(seg);
+  controls.appendChild(settingsBtn);
+  controls.appendChild(switchLabel);
 
   // Runtime-created instances can be removed; the 5 presets are fixed.
   if (!preset) {
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
-    removeBtn.className = "remove-btn";
-    removeBtn.textContent = "✕";
+    removeBtn.className = "icon-btn danger remove-btn";
     removeBtn.title = "Remove this instance (permanent)";
+    removeBtn.setAttribute("aria-label", `Remove ${id}`);
+    removeBtn.textContent = "✕";
     removeBtn.addEventListener("click", () => removeInstance(id));
-    li.appendChild(removeBtn);
+    controls.appendChild(removeBtn);
   }
+
+  li.appendChild(marker);
+  li.appendChild(grip);
+  li.appendChild(chip);
+  li.appendChild(info);
+  li.appendChild(controls);
   return li;
 }
 
@@ -295,12 +603,21 @@ function updateStatus() {
     const s = settings.instances[id];
     return s ? s.shown !== false : false;
   }).length;
-  el.textContent = `${created.size} instances · showing ${visibleCount} / hidden ${created.size - visibleCount}`;
+  el.textContent = `${created.size} items · ${visibleCount} shown · ${created.size - visibleCount} hidden`;
 }
 
+let logTimer = null;
 function log(msg) {
   const el = document.querySelector("#click-log");
-  if (el) el.textContent = msg;
+  if (!el) return;
+  el.textContent = msg;
+  // flash the status dot so it reads as live activity, not decoration
+  const dot = document.querySelector("#status-dot");
+  if (dot) {
+    dot.classList.add("live");
+    clearTimeout(logTimer);
+    logTimer = setTimeout(() => dot.classList.remove("live"), 1200);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -308,11 +625,13 @@ function log(msg) {
 // ---------------------------------------------------------------------------
 
 window.addEventListener("DOMContentLoaded", async () => {
+  bindListDnd(document.querySelector("#instance-list"));
+
   document.querySelector("#show-all-btn").addEventListener("click", () => setAllVisible(true));
   document.querySelector("#hide-all-btn").addEventListener("click", () => setAllVisible(false));
 
-  // Pre-fill the persisted global margin and apply it on boot (only when it
-  // differs from the plugin default, so a first run is a no-op).
+  // Pre-fill the persisted margins; like everything else in this console they
+  // apply as soon as a value is committed (Enter, blur, or the spinners).
   document.querySelector("#global-margin").value = settings.margin;
   if (settings.margin !== DEFAULT_MARGIN) {
     await invoke("plugin:multiline-taskband|set_margin", {
@@ -320,21 +639,36 @@ window.addEventListener("DOMContentLoaded", async () => {
     }).catch((err) => console.error("set_margin:", err));
   }
 
-  document.querySelector("#margin-btn").addEventListener("click", () => {
-    const v = parseInt(document.querySelector("#global-margin").value, 10);
-    if (Number.isFinite(v)) {
-      settings.margin = v;
-      persist();
-      invoke("plugin:multiline-taskband|set_margin", {
-        payload: { margin: v },
-      }).catch((err) => console.error("set_margin:", err));
-    }
+  const bindMargin = (sel, onCommit) => {
+    document.querySelector(sel).addEventListener("change", (e) => {
+      const v = parseInt(e.target.value, 10);
+      if (Number.isFinite(v)) onCommit(v);
+    });
+  };
+  bindMargin("#global-margin", (v) => {
+    settings.margin = v;
+    persist();
+    invoke("plugin:multiline-taskband|set_margin", {
+      payload: { margin: v },
+    }).catch((err) => console.error("set_margin:", err));
+  });
+  bindMargin("#edge-margin-left", (v) => {
+    settings.leftEdgeMargin = v;
+    persist();
+    invoke("plugin:multiline-taskband|set_edge_margins", {
+      payload: { left: v, right: settings.rightEdgeMargin },
+    }).catch((err) => console.error("set_edge_margins:", err));
+  });
+  bindMargin("#edge-margin-right", (v) => {
+    settings.rightEdgeMargin = v;
+    persist();
+    invoke("plugin:multiline-taskband|set_edge_margins", {
+      payload: { left: settings.leftEdgeMargin, right: v },
+    }).catch((err) => console.error("set_edge_margins:", err));
   });
 
-  // Pre-fill the persisted edge margins and apply them on boot (only when
-  // either differs from the plugin default, so a first run is a no-op).
-  document.querySelector("#edge-margin-left").value = settings.leftEdgeMargin;
-  document.querySelector("#edge-margin-right").value = settings.rightEdgeMargin;
+  // Pre-apply the persisted edge margins on boot (only when either differs
+  // from the plugin default, so a first run is a no-op).
   if (
     settings.leftEdgeMargin !== DEFAULT_EDGE_MARGIN ||
     settings.rightEdgeMargin !== DEFAULT_EDGE_MARGIN
@@ -343,19 +677,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       payload: { left: settings.leftEdgeMargin, right: settings.rightEdgeMargin },
     }).catch((err) => console.error("set_edge_margins:", err));
   }
-
-  document.querySelector("#edge-margins-btn").addEventListener("click", () => {
-    const left = parseInt(document.querySelector("#edge-margin-left").value, 10);
-    const right = parseInt(document.querySelector("#edge-margin-right").value, 10);
-    if (Number.isFinite(left) && Number.isFinite(right)) {
-      settings.leftEdgeMargin = left;
-      settings.rightEdgeMargin = right;
-      persist();
-      invoke("plugin:multiline-taskband|set_edge_margins", {
-        payload: { left, right },
-      }).catch((err) => console.error("set_edge_margins:", err));
-    }
-  });
 
   document.querySelector("#create-btn").addEventListener("click", async () => {
     const id = document.querySelector("#new-id").value.trim();
@@ -373,7 +694,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       bottom,
       shown: true,
     };
-    if (!settings.customOrder.includes(id)) settings.customOrder.push(id);
+    if (!settings.order.includes(id)) settings.order.push(id);
     persist();
     await createInstance({ id, side, top, bottom }).catch((err) =>
       console.error(`Failed to create ${id}:`, err)
@@ -395,19 +716,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     payload: { enabled: true },
   }).catch(() => {});
 
-  // Create all presets up front (ordered: left first, then right), then any
-  // runtime-created instances persisted from a previous session.
-  for (const p of PRESETS) {
-    const s = settings.instances[p.id] || instanceDefaults(p.id, p.side);
-    await createInstance({ id: p.id, side: s.side, top: s.top, bottom: s.bottom }).catch((err) =>
-      console.error(`Failed to create ${p.id}:`, err)
-    );
-  }
-  for (const id of settings.customOrder) {
+  // Create everything in the persisted list order — creation order is the
+  // plugin's default per-side layout key, so this boot already matches the
+  // list without extra set_order calls.
+  for (const id of settings.order) {
     const s = settings.instances[id];
     if (!s) continue;
     await createInstance({ id, side: s.side, top: s.top, bottom: s.bottom }).catch((err) =>
-      console.error(`Failed to restore ${id}:`, err)
+      console.error(`Failed to create ${id}:`, err)
     );
   }
   renderList();

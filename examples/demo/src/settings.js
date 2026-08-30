@@ -14,15 +14,19 @@
 //     rightEdgeMargin: 0,              // extra gap before the notification
 //                                     // area for the right group (physical px)
 //     instances: { [id]: Instance },   // per-instance appearance + shown
-//     customOrder: [id, ...]           // runtime-created instances, in
-//                                      // creation order (layout order)
+//     order: [id, ...]                 // unified list order — also the layout
+//                                      // order per side on the taskbar (the
+//                                      // demo derives each side's set_order
+//                                      // keys from this sequence)
 //   }
 // Instance: { shown, side, top, bottom, topSize, bottomSize,
 //             topFontFamily, bottomFontFamily, leftPadding, rightPadding,
 //             topColor, bottomColor, topBold, bottomBold, topAlign, bottomAlign }
 //
 // The pre-settings-v1 key (which only stored shown/hidden) is read as a
-// migration fallback when the new key does not exist yet.
+// migration fallback when the new key does not exist yet. An older shape that
+// kept customs in a separate `customOrder` array is migrated too: order then
+// becomes presets in canonical order followed by the customs.
 
 const STORAGE_KEY = "multiline-taskband-demo:settings-v1";
 const LEGACY_SHOWN_KEY = "multiline-taskband-demo:shown-v2";
@@ -75,8 +79,8 @@ function normalizeInstance(id, raw) {
 /**
  * Load the persisted settings, seeding defaults for the preset list and
  * migrating the legacy shown-only key. Tolerant of missing fields / older
- * shapes: stored values win over defaults. Orphaned instance records (not a
- * preset, not a tracked custom instance) are dropped.
+ * shapes: stored values win over defaults. Instance records that are neither
+ * a preset nor referenced by `order` are dropped.
  */
 export function loadSettings(presets = PRESETS) {
   const settings = {
@@ -84,8 +88,9 @@ export function loadSettings(presets = PRESETS) {
     leftEdgeMargin: DEFAULT_EDGE_MARGIN,
     rightEdgeMargin: DEFAULT_EDGE_MARGIN,
     instances: {},
-    customOrder: [],
+    order: presets.map((p) => p.id),
   };
+  const presetIds = new Set(presets.map((p) => p.id));
   for (const p of presets) {
     settings.instances[p.id] = instanceDefaults(p.id, p.side);
   }
@@ -109,7 +114,16 @@ export function loadSettings(presets = PRESETS) {
         settings.instances[id] = normalizeInstance(id, inst);
       }
     }
-    if (Array.isArray(raw.customOrder)) settings.customOrder = raw.customOrder;
+    // Unified list order (also the per-side taskbar layout order). Falls back
+    // to the older presets-then-customOrder shape when `order` is absent.
+    if (Array.isArray(raw.order)) {
+      settings.order = raw.order.filter((id) => settings.instances[id]);
+    } else if (Array.isArray(raw.customOrder)) {
+      settings.order = [
+        ...presets.map((p) => p.id),
+        ...raw.customOrder.filter((id) => id && !presetIds.has(id) && settings.instances[id]),
+      ];
+    }
   } else {
     // Migration: the old key only recorded which presets were shown/hidden.
     try {
@@ -124,13 +138,18 @@ export function loadSettings(presets = PRESETS) {
     } catch (_) {}
   }
 
-  // Drop orphaned instance records (not a preset, not a tracked custom
-  // instance) so the store can't accumulate stale entries.
-  const presetIds = new Set(presets.map((p) => p.id));
+  // Drop orphaned instance records (order is authoritative for customs) so
+  // the store can't accumulate stale entries.
   for (const id of Object.keys(settings.instances)) {
-    if (!presetIds.has(id) && !settings.customOrder.includes(id)) {
+    if (!presetIds.has(id) && !settings.order.includes(id)) {
       delete settings.instances[id];
     }
+  }
+  // Keep the order complete and duplicate-free (e.g. presets a stored order
+  // predates), then prune ids whose record is gone.
+  settings.order = [...new Set(settings.order)].filter((id) => settings.instances[id]);
+  for (const id of Object.keys(settings.instances)) {
+    if (!settings.order.includes(id)) settings.order.push(id);
   }
   return settings;
 }
@@ -145,7 +164,7 @@ export function saveSettings(settings) {
  * Merge field updates into one instance's stored record and save. Used by
  * the popup window, which knows a single instance id but not the presets:
  * it patches that instance's own entry and preserves host-owned fields
- * (shown, customOrder, margin, edge margins). Returns the merged instance.
+ * (shown, order, margin, edge margins). Returns the merged instance.
  */
 export function saveInstanceState(id, updates) {
   const settings = loadSettings();

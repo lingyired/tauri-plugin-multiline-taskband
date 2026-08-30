@@ -2,78 +2,125 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="stylesheet" href="styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Multiline Taskband Demo</title>
+    <script>
+      // ?theme=light pins the light palette (preview on dark systems)
+      if (new URLSearchParams(location.search).get("theme") === "light") {
+        document.documentElement.dataset.theme = "light";
+      }
+    </script>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="styles.css" />
     <script type="module" src="/main.js" defer></script>
   </head>
 
   <body>
-    <main class="container">
-      <h1>Multiline Taskband Plugin</h1>
-      <p class="muted">multiline-taskband-demo · com.tauri.multiline-taskband-demo</p>
-
-      <p class="muted">
-        5 taskbar instances (mb-1 … mb-5). Each instance is a two-line overlay
-        on the taskbar; click one <b>on the taskbar</b> (or its Settings button
-        below) to open its settings popup (text, font sizes, padding, colors,
-        bold, alignment, side). All settings — text, appearance, side,
-        shown/hidden, the global margins and any instances you create — are
-        saved automatically and restored on the next launch.
-      </p>
-      <p class="muted">
-        Windows 10 / 11: <b>left</b> instances hug the taskbar's left edge,
-        <b>right</b> instances sit next to the notification area (tray);
-        same-side instances are laid out side by side in creation order. The
-        edge margins below push each group away from its edge, e.g. to make
-        room for other tools like TrafficMonitor.
-      </p>
-
-      <section class="card">
-        <h2>Global settings</h2>
-        <p class="muted">Options that apply to every taskbar instance (persisted).</p>
-        <div class="create-form">
-          <label class="inline-label" for="global-margin">Margin (px)</label>
-          <input id="global-margin" type="number" value="4" min="0" max="24" step="1"
-                 title="Spacing between instances (physical pixels), default 4" />
-          <button id="margin-btn">Apply</button>
+    <main class="app">
+      <header class="app-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <span class="bl a"></span>
+            <span class="bl b"></span>
+          </span>
+          <div>
+            <h1>Multiline Taskband</h1>
+            <p class="app-sub">Taskbar overlay console · demo v0.2.0</p>
+          </div>
         </div>
-        <div class="create-form">
-          <label class="inline-label" for="edge-margin-left">Left edge margin (px)</label>
-          <input id="edge-margin-left" type="number" value="0" min="0" max="500" step="1"
-                 title="Extra gap between the taskbar's left edge and the left-side instances (physical pixels), default 0" />
-          <label class="inline-label" for="edge-margin-right">Right edge margin (px)</label>
-          <input id="edge-margin-right" type="number" value="0" min="0" max="500" step="1"
-                 title="Extra gap between the notification area and the right-side instances (physical pixels), default 0" />
-          <button id="edge-margins-btn">Apply</button>
-        </div>
-      </section>
 
-      <section class="card">
-        <h2>Taskbar instances</h2>
-        <div class="row">
-          <button type="button" id="show-all-btn">Show all</button>
-          <button type="button" id="hide-all-btn">Hide all</button>
-          <span id="instance-status" class="muted"></span>
-        </div>
-        <ul id="instance-list" class="instance-list"></ul>
-        <p id="click-log" class="muted">Click an item on the taskbar, or its Settings button, to open its settings popup.</p>
-      </section>
+        <details class="about">
+          <summary>About</summary>
+          <div class="about-body">
+            <p>
+              This demo drives <b>5 instances</b> (mb-1 … mb-5). Each renders
+              two lines of text on the Windows taskbar; <b>click an item on the
+              taskbar</b> — or its gear here — to open its settings popup.
+              Everything you change is saved automatically and restored on the
+              next launch.
+            </p>
+            <p>
+              <b>Left</b> instances hug the taskbar's left edge, <b>right</b>
+              instances sit next to the notification area (tray). Rows are
+              drag-reorderable — grab a row's grip, or press ↑/↓ on it; the
+              taskbar follows the list order within each side. The spacing
+              controls push each group away from its edge — e.g. to make room
+              for TrafficMonitor.
+            </p>
+          </div>
+        </details>
+      </header>
 
-      <section class="card">
-        <h2>Create instance</h2>
-        <p class="muted">Create a new taskbar instance at runtime (unique id; empty text lines show the instance id). Created instances are persisted and restored on the next launch — remove them with the ✕ button on their row.</p>
-        <div class="create-form">
-          <input id="new-id" placeholder="id (e.g. group-a)" />
-          <select id="new-side">
-            <option value="right">right (tray)</option>
-            <option value="left">left (start)</option>
-          </select>
-          <input id="new-top" placeholder="top line (e.g. +1.23%)" />
-          <input id="new-bottom" placeholder="bottom line (e.g. ¥12,340)" />
-          <button id="create-btn">Create</button>
-        </div>
-      </section>
+      <div class="layout">
+        <section class="panel instances-panel" aria-labelledby="instances-title">
+          <div class="panel-head">
+            <h2 class="eyebrow" id="instances-title">Instances</h2>
+            <span id="instance-status" class="mono"></span>
+            <div class="head-actions">
+              <button type="button" id="show-all-btn" class="btn ghost sm">Show all</button>
+              <button type="button" id="hide-all-btn" class="btn ghost sm">Hide all</button>
+            </div>
+          </div>
+          <ul id="instance-list" class="instance-list"></ul>
+        </section>
+
+        <aside class="rail">
+          <section class="panel rail-sec" aria-labelledby="spacing-title">
+            <h2 class="eyebrow" id="spacing-title">Taskbar spacing</h2>
+            <div class="field-row">
+              <label for="global-margin">Gap between items</label>
+              <span class="num">
+                <input id="global-margin" type="number" value="4" min="0" max="24" step="1"
+                       title="Spacing between instances (physical pixels), default 4" />
+                <span class="unit">px</span>
+              </span>
+            </div>
+            <div class="field-row">
+              <label for="edge-margin-left">Left edge margin</label>
+              <span class="num">
+                <input id="edge-margin-left" type="number" value="0" min="0" max="500" step="1"
+                       title="Extra gap between the taskbar's left edge and the left-side instances (physical pixels), default 0" />
+                <span class="unit">px</span>
+              </span>
+            </div>
+            <div class="field-row">
+              <label for="edge-margin-right">Right edge margin</label>
+              <span class="num">
+                <input id="edge-margin-right" type="number" value="0" min="0" max="500" step="1"
+                       title="Extra gap between the notification area and the right-side instances (physical pixels), default 0" />
+                <span class="unit">px</span>
+              </span>
+            </div>
+            <p class="hint">
+              Changes apply as you edit. Edge margins push each group inward —
+              make room for tools like TrafficMonitor.
+            </p>
+          </section>
+
+          <section class="panel rail-sec" aria-labelledby="create-title">
+            <h2 class="eyebrow" id="create-title">New instance</h2>
+            <div class="create-grid">
+              <input type="text" id="new-id" placeholder="id · group-a" autocomplete="off" spellcheck="false" aria-label="Instance id" />
+              <select id="new-side" aria-label="Side">
+                <option value="right">Right edge</option>
+                <option value="left">Left edge</option>
+              </select>
+              <input type="text" id="new-top" placeholder="top line · +1.23%" autocomplete="off" spellcheck="false" aria-label="Top line text" />
+              <input type="text" id="new-bottom" placeholder="bottom line · ¥12,340" autocomplete="off" spellcheck="false" aria-label="Bottom line text" />
+              <button id="create-btn" class="btn primary">Create instance</button>
+            </div>
+            <p class="hint">
+              Empty lines fall back to the id. Created instances persist across
+              launches; remove them with their row's ✕.
+            </p>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="statusbar">
+        <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+        <p id="click-log">Click a taskband item on the taskbar — or a row's gear — to open its settings popup.</p>
+      </footer>
     </main>
   </body>
 </html>

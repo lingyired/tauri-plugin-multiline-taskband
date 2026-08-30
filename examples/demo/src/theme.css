@@ -1,0 +1,451 @@
+/* theme.css — shared design tokens + controls for the demo's two windows.
+ *
+ * The demo configures two-line text chips that live on the Windows taskbar,
+ * so the UI follows the platform: Win11-style neutral surfaces (mica-ish),
+ * system font stack, and two edge tints that encode the plugin's core concept
+ * — amber = left edge (Start side), teal = right edge (tray side). Primary
+ * controls are filled with ink itself instead of an accent color.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* type */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system,
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-data: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace,
+    "SF Mono", Menlo, monospace;
+
+  /* light palette */
+  --bg: #f2f2f2;
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-solid: #ffffff;
+  --surface-2: rgba(0, 0, 0, 0.045); /* wells and hovers */
+  --stroke: rgba(0, 0, 0, 0.09);
+  --stroke-strong: rgba(0, 0, 0, 0.17);
+  --ink: #1b1b1b;
+  --ink-2: rgba(27, 27, 27, 0.64);
+  --ink-3: rgba(27, 27, 27, 0.42);
+  --edge-left: #a96a10; /* amber — the Start side */
+  --edge-right: #0d7d9b; /* teal — the tray side */
+  --danger: #b3261e;
+  --danger-soft: rgba(179, 38, 30, 0.1);
+  --ring: rgba(27, 27, 27, 0.13);
+  --tb-bg: #f3f3f3; /* simulated taskbar */
+  --tb-ink: #1a1a1a;
+  --tb-stroke: rgba(0, 0, 0, 0.07);
+  --shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
+}
+
+/* dark palette — skipped when ?theme=light pins the light palette
+   (preview/screenshots on dark systems) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #212121;
+    --surface: rgba(255, 255, 255, 0.052);
+    --surface-solid: #2c2c2c;
+    --surface-2: rgba(255, 255, 255, 0.06);
+    --stroke: rgba(255, 255, 255, 0.09);
+    --stroke-strong: rgba(255, 255, 255, 0.18);
+    --ink: #f3f3f3;
+    --ink-2: rgba(243, 243, 243, 0.64);
+    --ink-3: rgba(243, 243, 243, 0.42);
+    --edge-left: #f0b254;
+    --edge-right: #4cc4e3;
+    --danger: #ff6b5e;
+    --danger-soft: rgba(255, 107, 94, 0.12);
+    --ring: rgba(255, 255, 255, 0.16);
+    --tb-bg: #262626;
+    --tb-ink: #f6f6f6;
+    --tb-stroke: rgba(255, 255, 255, 0.07);
+    --shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.mono {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+.faint {
+  color: var(--ink-3);
+}
+
+/* section labels — small caps eyebrows */
+.eyebrow {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* --- inputs ------------------------------------------------------------- */
+
+input[type="text"],
+input[type="number"],
+select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface-solid);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 6px 10px;
+  outline: none;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  input[type="text"],
+  input[type="number"],
+  select {
+    background: var(--surface-2);
+  }
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus {
+  border-color: var(--stroke-strong);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+input::placeholder {
+  color: var(--ink-3);
+}
+
+input[type="number"] {
+  font-family: var(--font-data);
+  font-size: 12.5px;
+}
+
+input[type="number"]::-webkit-inner-spin-button {
+  opacity: 0.5;
+}
+
+/* right-aligned number with a "px" unit suffix */
+.num {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.num input {
+  width: 76px;
+  padding-right: 27px;
+  text-align: right;
+}
+
+.num .unit {
+  position: absolute;
+  right: 10px;
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+
+/* --- buttons ------------------------------------------------------------ */
+
+button {
+  font: inherit;
+}
+
+.btn,
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--surface-solid);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.btn {
+  padding: 6px 14px;
+  font-size: 12.5px;
+}
+
+.btn:hover {
+  background: var(--surface-2);
+  border-color: var(--stroke-strong);
+}
+
+.btn.primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+
+.btn.primary:hover {
+  opacity: 0.86;
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-2);
+}
+
+.btn.ghost:hover {
+  background: var(--surface-2);
+  border-color: transparent;
+  color: var(--ink);
+}
+
+.btn.sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 7px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-2);
+}
+
+.icon-btn:hover {
+  background: var(--surface-2);
+  border-color: transparent;
+  color: var(--ink);
+}
+
+.icon-btn.danger:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+input:focus-visible,
+input[type="color"]:focus-visible {
+  outline: none; /* inputs show focus via border + ring instead */
+}
+
+/* --- segmented control --------------------------------------------------- */
+
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--stroke);
+  border-radius: 9px;
+}
+
+.seg button {
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  border-radius: 7px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.seg button:hover {
+  color: var(--ink);
+}
+
+.seg button[aria-pressed="true"] {
+  background: var(--surface-solid);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+}
+
+.seg.sm button {
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+/* --- switch -------------------------------------------------------------- */
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 21px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.switch .slider {
+  position: absolute;
+  inset: 0;
+  border-radius: 21px;
+  background: transparent;
+  border: 1px solid var(--stroke-strong);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.switch .slider::before {
+  content: "";
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  left: 3px;
+  top: 3px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
+}
+
+.switch input:checked + .slider {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(17px);
+  background: var(--bg);
+}
+
+.switch input:focus-visible + .slider {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.switch.sm {
+  width: 32px;
+  height: 18px;
+}
+
+.switch.sm .slider::before {
+  width: 11px;
+  height: 11px;
+}
+
+.switch.sm input:checked + .slider::before {
+  transform: translateX(14px);
+}
+
+/* --- range --------------------------------------------------------------- */
+
+input[type="range"] {
+  accent-color: var(--ink);
+  min-width: 0;
+}
+
+/* --- range: thin track + ink thumb (the native one glares in dark mode) ---- */
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--stroke-strong);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: none;
+  background: var(--ink);
+  margin-top: -5px;
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* --- scrollbars ----------------------------------------------------------- */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--stroke-strong);
+  border-radius: 5px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner,
+::-webkit-scrollbar-button {
+  background: transparent;
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

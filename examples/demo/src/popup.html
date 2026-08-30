@@ -4,323 +4,176 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Taskband Item Settings</title>
-    <style>
-      /* Visual style mirrors the multiline-menubar demo's popup. */
-      :root {
-        color-scheme: light dark;
+    <script>
+      // ?theme=light pins the light palette (preview on dark systems)
+      if (new URLSearchParams(location.search).get("theme") === "light") {
+        document.documentElement.dataset.theme = "light";
       }
-      * {
-        box-sizing: border-box;
-      }
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        height: 100%;
-        overflow: hidden;
-        background: transparent;
-        font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
-      }
-      .card {
-        margin: 12px;
-        height: calc(100% - 24px);
-        background: rgba(255, 255, 255, 0.94);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 14px;
-        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
-        padding: 18px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        color: #1d1d1f;
-        overflow-y: auto;
-      }
-      @media (prefers-color-scheme: dark) {
-        .card {
-          background: rgba(40, 40, 44, 0.95);
-          border-color: rgba(255, 255, 255, 0.08);
-          color: #f2f2f7;
-        }
-      }
-      h2 {
-        margin: 0;
-        font-size: 15px;
-        font-weight: 600;
-      }
-      p {
-        margin: 0;
-        font-size: 12px;
-        opacity: 0.7;
-      }
-      .field {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        font-size: 12px;
-      }
-      input[type="text"],
-      input[type="number"] {
-        padding: 7px 9px;
-        border-radius: 8px;
-        border: 1px solid rgba(0, 0, 0, 0.15);
-        background: rgba(255, 255, 255, 0.6);
-        color: inherit;
-        font-size: 13px;
-      }
-      input[type="color"] {
-        padding: 0;
-        height: 30px;
-        width: 100%;
-        border-radius: 8px;
-        border: 1px solid rgba(0, 0, 0, 0.15);
-        cursor: pointer;
-      }
-      input[type="range"] {
-        width: 100%;
-      }
-      select {
-        padding: 6px 8px;
-        border-radius: 8px;
-        border: 1px solid rgba(0, 0, 0, 0.15);
-        background: rgba(255, 255, 255, 0.6);
-        color: inherit;
-        font-size: 12px;
-      }
-      @media (prefers-color-scheme: dark) {
-        input[type="text"],
-        input[type="number"],
-        select {
-          border-color: rgba(255, 255, 255, 0.15);
-          background: rgba(0, 0, 0, 0.25);
-        }
-      }
-      fieldset.colors {
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        border-radius: 10px;
-        padding: 8px 10px;
-        margin: 0;
-        font-size: 12px;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      @media (prefers-color-scheme: dark) {
-        fieldset.colors {
-          border-color: rgba(255, 255, 255, 0.15);
-        }
-      }
-      legend {
-        font-size: 11px;
-        font-weight: 600;
-        opacity: 0.85;
-        padding: 0 4px;
-      }
-      .row {
-        display: flex;
-        gap: 8px;
-      }
-      /* `hidden` must win over `.row`'s own `display: flex` (author styles beat
-         the UA stylesheet), so the collapsed custom-color row really hides. */
-      .row[hidden] {
-        display: none;
-      }
-      .row > .field {
-        flex: 1;
-      }
-      .inline {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: 12px;
-      }
-      button {
-        flex: 1;
-        padding: 8px 10px;
-        border-radius: 9px;
-        border: none;
-        background: #0a84ff;
-        color: white;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-      }
-      button.secondary {
-        background: rgba(0, 0, 0, 0.12);
-        color: inherit;
-      }
-    </style>
+    </script>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="popup.css" />
+    <script type="module" src="/popup.js" defer></script>
   </head>
 
   <body>
-    <div class="card">
-      <h2 id="popup-header">Instance settings</h2>
-      <p>Edit this taskbar instance's text and appearance below.</p>
+    <main class="pop">
+      <header class="pop-head" data-tauri-drag-region>
+        <span id="pop-side-dot" class="side-dot" data-side="right" aria-hidden="true"></span>
+        <div class="pop-title" data-tauri-drag-region>
+          <span id="pop-id" class="mono">…</span>
+          <span class="pop-sub">taskband item</span>
+        </div>
+        <button type="button" id="popup-close" class="icon-btn" title="Close" aria-label="Close">
+          <svg viewBox="0 0 14 14" width="12" height="12" aria-hidden="true">
+            <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none" />
+          </svg>
+        </button>
+      </header>
 
-      <fieldset class="colors">
-        <legend>Text</legend>
-        <div class="field">
-          <label for="popup-top">Top label</label>
-          <input type="text" id="popup-top" value="" />
-        </div>
-        <div class="field">
-          <label for="popup-bottom">Bottom value</label>
-          <input type="text" id="popup-bottom" value="" />
-        </div>
-        <div class="row">
-          <button id="popup-text-update">Update</button>
-          <button id="popup-text-reset" class="secondary">Reset</button>
-        </div>
-      </fieldset>
-
-      <fieldset class="colors">
-        <legend>Font size</legend>
-        <div class="field">
-          <label for="popup-top-size">
-            Top line size (<span id="popup-top-size-value">11</span> pt)
-          </label>
-          <input type="range" id="popup-top-size" min="6" max="24" step="1" value="11" />
-        </div>
-        <div class="field">
-          <label for="popup-bottom-size">
-            Bottom line size (<span id="popup-bottom-size-value">11</span> pt)
-          </label>
-          <input type="range" id="popup-bottom-size" min="6" max="24" step="1" value="11" />
-        </div>
-        <div class="row">
-          <button id="popup-sizes">Apply sizes</button>
-        </div>
-      </fieldset>
-
-      <fieldset class="colors">
-        <legend>Font family</legend>
-        <div class="field">
-          <label for="popup-top-family">Top line family (blank = system font)</label>
-          <input type="text" id="popup-top-family" value="" placeholder="System font" />
-        </div>
-        <div class="field">
-          <label for="popup-bottom-family">Bottom line family (blank = system font)</label>
-          <input type="text" id="popup-bottom-family" value="" placeholder="System font" />
-        </div>
-        <div class="row">
-          <button id="popup-families">Apply fonts</button>
-          <button id="popup-families-reset" class="secondary">Reset</button>
-        </div>
-      </fieldset>
-
-      <fieldset class="colors">
-        <legend>Padding (physical px)</legend>
-        <div class="row">
-          <div class="field">
-            <label for="popup-pad-left">Left padding</label>
-            <input type="number" id="popup-pad-left" min="0" max="24" step="1" value="4" />
-          </div>
-          <div class="field">
-            <label for="popup-pad-right">Right padding</label>
-            <input type="number" id="popup-pad-right" min="0" max="24" step="1" value="4" />
-          </div>
-        </div>
-        <div class="row">
-          <button id="popup-padding">Apply padding</button>
-        </div>
-      </fieldset>
-
-      <fieldset class="colors">
-        <legend>Side</legend>
-        <div class="field">
-          <label for="popup-side">Side of the taskbar</label>
-          <select id="popup-side">
-            <option value="left">left (taskbar left edge)</option>
-            <option value="right" selected>right (notification area)</option>
-          </select>
-        </div>
-        <div class="row">
-          <button id="popup-side-apply">Apply side</button>
-          <button id="popup-side-reset" class="secondary">Reset to right</button>
-        </div>
-      </fieldset>
-
-      <fieldset class="colors">
-        <legend>Text color</legend>
-        <div class="field">
-          <label for="popup-top-color-mode">Top line</label>
-          <select id="popup-top-color-mode">
-            <option value="default">System default (follows theme)</option>
-            <option value="solid">Custom color</option>
-          </select>
-          <div class="row" id="popup-top-solid-row" hidden>
-            <div class="field">
-              <label for="popup-top-color">Color</label>
-              <input type="color" id="popup-top-color" value="#ffffff" />
+      <div class="pop-scroll">
+        <section aria-label="Live preview">
+          <p class="eyebrow">On the taskbar</p>
+          <div class="taskbar-sim" aria-hidden="true">
+            <span class="sim-start"></span>
+            <div class="sim-chip" id="sim-chip">
+              <span class="sim-line" id="sim-top">&nbsp;</span>
+              <span class="sim-line" id="sim-bottom">&nbsp;</span>
             </div>
-            <div class="field">
-              <label for="popup-top-hex">Hex</label>
-              <input type="text" id="popup-top-hex" value="#ffffff" />
+            <span class="sim-clock">09:41</span>
+          </div>
+          <p class="hint">
+            Live preview. The system-default color follows your light / dark
+            theme, exactly like the real item.
+          </p>
+        </section>
+
+        <section class="line-sec" aria-label="Top line">
+          <div class="sec-head">
+            <span class="eyebrow"><span class="line-dot" id="top-dot"></span>Top line</span>
+          </div>
+          <input type="text" id="popup-top" placeholder="e.g. HOLDINGS" autocomplete="off" spellcheck="false" />
+          <div class="lrow">
+            <input type="range" id="popup-top-size" min="6" max="24" step="1" value="11" aria-label="Top line size (pt)" />
+            <output id="popup-top-size-value" class="size-val" for="popup-top-size">11 pt</output>
+          </div>
+          <input type="text" id="popup-top-family" class="family-input" placeholder="Font family · blank = system"
+                 autocomplete="off" spellcheck="false" aria-label="Top line font family" />
+          <div class="lrow">
+            <div class="seg" role="group" aria-label="Top line color mode" data-group="cmode-top">
+              <button type="button" data-cmode="default" aria-pressed="true">System</button>
+              <button type="button" data-cmode="solid" aria-pressed="false">Custom</button>
+            </div>
+            <div class="color-custom" id="popup-top-solid-row" hidden>
+              <input type="color" id="popup-top-color" class="swatch" value="#ffffff" aria-label="Top line color" />
+              <input type="text" id="popup-top-hex" class="hex-input" value="#ffffff" autocomplete="off"
+                     spellcheck="false" aria-label="Top line hex value" />
             </div>
           </div>
-        </div>
-        <div class="field">
-          <label for="popup-bottom-color-mode">Bottom line</label>
-          <select id="popup-bottom-color-mode">
-            <option value="default">System default (follows theme)</option>
-            <option value="solid">Custom color</option>
-          </select>
-          <div class="row" id="popup-bottom-solid-row" hidden>
-            <div class="field">
-              <label for="popup-bottom-color">Color</label>
-              <input type="color" id="popup-bottom-color" value="#ffffff" />
-            </div>
-            <div class="field">
-              <label for="popup-bottom-hex">Hex</label>
-              <input type="text" id="popup-bottom-hex" value="#ffffff" />
+          <div class="lrow bold-row">
+            <label class="bold-label">
+              <span class="switch sm">
+                <input type="checkbox" id="popup-top-bold" />
+                <span class="slider"></span>
+              </span>
+              Bold
+            </label>
+            <div class="seg seg-icons" role="group" aria-label="Top line alignment" data-group="align-top">
+              <button type="button" data-align="0" aria-pressed="true" title="Align left">
+                <svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true">
+                  <path d="M1.5 3h11M1.5 7h7M1.5 11h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" />
+                </svg>
+              </button>
+              <button type="button" data-align="1" aria-pressed="false" title="Align center">
+                <svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true">
+                  <path d="M1.5 3h11M3.5 7h7M2.5 11h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" />
+                </svg>
+              </button>
+              <button type="button" data-align="2" aria-pressed="false" title="Align right">
+                <svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true">
+                  <path d="M1.5 3h11M5.5 7h7M3.5 11h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" />
+                </svg>
+              </button>
             </div>
           </div>
-        </div>
-        <div class="row">
-          <button id="popup-colors">Apply colors</button>
-          <button id="popup-reset-colors" class="secondary">Reset to system default</button>
-        </div>
-      </fieldset>
+        </section>
 
-      <fieldset class="colors">
-        <legend>Bold</legend>
-        <div class="field">
-          <label><input type="checkbox" id="popup-top-bold" /> Bold top line</label>
-        </div>
-        <div class="field">
-          <label><input type="checkbox" id="popup-bottom-bold" /> Bold bottom line</label>
-        </div>
-        <div class="row">
-          <button id="popup-bold">Apply bold</button>
-        </div>
-      </fieldset>
+        <section class="line-sec" aria-label="Bottom line">
+          <div class="sec-head">
+            <span class="eyebrow"><span class="line-dot" id="bottom-dot"></span>Bottom line</span>
+          </div>
+          <input type="text" id="popup-bottom" placeholder="e.g. +1.23%" autocomplete="off" spellcheck="false" />
+          <div class="lrow">
+            <input type="range" id="popup-bottom-size" min="6" max="24" step="1" value="11" aria-label="Bottom line size (pt)" />
+            <output id="popup-bottom-size-value" class="size-val" for="popup-bottom-size">11 pt</output>
+          </div>
+          <input type="text" id="popup-bottom-family" class="family-input" placeholder="Font family · blank = system"
+                 autocomplete="off" spellcheck="false" aria-label="Bottom line font family" />
+          <div class="lrow">
+            <div class="seg" role="group" aria-label="Bottom line color mode" data-group="cmode-bottom">
+              <button type="button" data-cmode="default" aria-pressed="true">System</button>
+              <button type="button" data-cmode="solid" aria-pressed="false">Custom</button>
+            </div>
+            <div class="color-custom" id="popup-bottom-solid-row" hidden>
+              <input type="color" id="popup-bottom-color" class="swatch" value="#ffffff" aria-label="Bottom line color" />
+              <input type="text" id="popup-bottom-hex" class="hex-input" value="#ffffff" autocomplete="off"
+                     spellcheck="false" aria-label="Bottom line hex value" />
+            </div>
+          </div>
+          <div class="lrow bold-row">
+            <label class="bold-label">
+              <span class="switch sm">
+                <input type="checkbox" id="popup-bottom-bold" />
+                <span class="slider"></span>
+              </span>
+              Bold
+            </label>
+            <div class="seg seg-icons" role="group" aria-label="Bottom line alignment" data-group="align-bottom">
+              <button type="button" data-align="0" aria-pressed="true" title="Align left">
+                <svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true">
+                  <path d="M1.5 3h11M1.5 7h7M1.5 11h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" />
+                </svg>
+              </button>
+              <button type="button" data-align="1" aria-pressed="false" title="Align center">
+                <svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true">
+                  <path d="M1.5 3h11M3.5 7h7M2.5 11h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" />
+                </svg>
+              </button>
+              <button type="button" data-align="2" aria-pressed="false" title="Align right">
+                <svg viewBox="0 0 14 14" width="13" height="13" aria-hidden="true">
+                  <path d="M1.5 3h11M5.5 7h7M3.5 11h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </section>
 
-      <fieldset class="colors">
-        <legend>Alignment (per line)</legend>
-        <div class="field">
-          <label for="popup-top-align">Top line</label>
-          <select id="popup-top-align">
-            <option value="0" selected>Left</option>
-            <option value="1">Center</option>
-            <option value="2">Right</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="popup-bottom-align">Bottom line</label>
-          <select id="popup-bottom-align">
-            <option value="0" selected>Left</option>
-            <option value="1">Center</option>
-            <option value="2">Right</option>
-          </select>
-        </div>
-        <div class="row">
-          <button id="popup-alignment">Apply alignment</button>
-        </div>
-      </fieldset>
-
-      <div class="row">
-        <button id="popup-close" class="secondary">Close</button>
+        <section class="line-sec pos-sec" aria-label="Position on the taskbar">
+          <span class="eyebrow">Position</span>
+          <div class="lrow">
+            <span class="pos-label">Edge</span>
+            <div class="seg" role="group" aria-label="Taskbar side" data-group="side">
+              <button type="button" data-side="left" aria-pressed="false">Left · Start</button>
+              <button type="button" data-side="right" aria-pressed="true">Right · tray</button>
+            </div>
+          </div>
+          <div class="lrow">
+            <span class="pos-label">Padding</span>
+            <span class="num grow">
+              <input type="number" id="popup-pad-left" min="0" max="24" step="1" value="4" aria-label="Left padding (physical pixels)" />
+              <span class="unit">px</span>
+            </span>
+            <span class="num grow">
+              <input type="number" id="popup-pad-right" min="0" max="24" step="1" value="4" aria-label="Right padding (physical pixels)" />
+              <span class="unit">px</span>
+            </span>
+          </div>
+        </section>
       </div>
-    </div>
-    <script type="module" src="/popup.js" defer></script>
+
+      <footer class="pop-foot">
+        <button type="button" id="popup-reset" class="btn ghost sm">Reset appearance</button>
+        <span id="pop-saved" class="saved" role="status" aria-live="polite"></span>
+      </footer>
+    </main>
   </body>
 </html>

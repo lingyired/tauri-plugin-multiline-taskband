@@ -1,0 +1,300 @@
+/* popup.css — per-instance settings popup (undecorated 400×640 window).
+ *
+ * Opens anchored to the item's taskbar rectangle, so it draws its own rounded
+ * surface over the transparent window. Sections are grouped the way the item
+ * is actually seen — two lines first, then position — and every control
+ * applies immediately (the footer flashes "Saved").
+ */
+
+body {
+  background: transparent;
+}
+
+.pop {
+  height: calc(100vh - 20px);
+  margin: 10px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-solid);
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* --- header (drag region) -------------------------------------------------- */
+
+.pop-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 10px 9px 14px;
+  border-bottom: 1px solid var(--stroke);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.side-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--edge-left);
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.side-dot[data-side="right"] {
+  background: var(--edge-right);
+}
+
+.pop-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  cursor: default;
+}
+
+#pop-id {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pop-sub {
+  font-size: 11px;
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+/* --- scroll area ------------------------------------------------------------ */
+
+.pop-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* --- taskbar simulation ------------------------------------------------------ */
+
+.taskbar-sim {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 64px;
+  padding: 0 12px;
+  background: var(--tb-bg);
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 1px var(--tb-stroke);
+}
+
+.sim-start {
+  width: 13px;
+  height: 13px;
+  border-radius: 3.5px;
+  border: 1.5px solid var(--tb-ink);
+  opacity: 0.28;
+  flex-shrink: 0;
+}
+
+.sim-clock {
+  font-family: var(--font-data);
+  font-size: 10.5px;
+  color: var(--tb-ink);
+  opacity: 0.35;
+  flex-shrink: 0;
+}
+
+.sim-chip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+.sim-line {
+  display: block;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+/* --- line sections ------------------------------------------------------------ */
+
+.line-sec {
+  border: 1px solid var(--stroke);
+  border-radius: 11px;
+  padding: 11px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* live dot beside the section label: previews the line's effective color */
+.line-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: 0;
+  border: 1px solid var(--stroke-strong);
+  background: var(--ink-2);
+  transition: background 0.15s ease;
+}
+
+.line-sec input[type="text"] {
+  width: 100%;
+}
+
+.lrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lrow input[type="range"] {
+  flex: 1;
+}
+
+.size-val {
+  font-family: var(--font-data);
+  font-size: 11.5px;
+  color: var(--ink-2);
+  width: 46px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.family-input {
+  font-size: 12.5px;
+}
+
+.color-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* `hidden` must win over .color-custom's display:flex (author styles beat the
+   UA stylesheet), so the collapsed custom-color row really hides. */
+.color-custom[hidden] {
+  display: none;
+}
+
+.swatch {
+  width: 32px;
+  height: 27px;
+  padding: 2px;
+  border-radius: 7px;
+  border: 1px solid var(--stroke);
+  background: var(--surface-solid);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.swatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.swatch::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+.hex-input {
+  width: 86px;
+  font-family: var(--font-data);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.bold-row {
+  justify-content: space-between;
+}
+
+.bold-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.seg-icons button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 9px;
+}
+
+/* --- position section ---------------------------------------------------------- */
+
+.pos-sec .lrow {
+  justify-content: space-between;
+}
+
+.pos-label {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  flex-shrink: 0;
+}
+
+.num.grow {
+  flex: 1;
+}
+
+.num.grow input {
+  width: 100%;
+}
+
+/* --- footer ---------------------------------------------------------------------- */
+
+.pop-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--stroke);
+  background: var(--surface-solid); /* the scroll area slides beneath it */
+  flex-shrink: 0;
+}
+
+.saved {
+  margin-left: auto;
+  font-family: var(--font-data);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.saved.show {
+  opacity: 1;
+}
+
+.saved.err {
+  color: var(--danger);
+  opacity: 1;
+}
