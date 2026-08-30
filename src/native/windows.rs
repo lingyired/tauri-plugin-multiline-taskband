@@ -129,6 +129,7 @@ enum UiCommand {
     SetBold { id: String, top: bool, bottom: bool },
     SetAlignment { id: String, top: i32, bottom: i32 },
     SetVisible { id: String, visible: bool },
+    SetLineVisible { id: String, top: bool, bottom: bool },
     Relayout,
 }
 
@@ -242,6 +243,11 @@ struct Inst {
     top_align: i32,
     bottom_align: i32,
     visible: bool,
+    /// Per-line visibility. Hiding one line shrinks the window to the other
+    /// (recentred in the taskbar); hiding both is equivalent to `visible ==
+    /// false` for rendering/layout, but leaves the `visible` flag untouched.
+    top_visible: bool,
+    bottom_visible: bool,
     /// True when the window has been embedded as a child of the taskbar
     /// (`SetParent`). Embedded children are painted in taskbar client
     /// coordinates and never need z-order maintenance.
@@ -278,9 +284,20 @@ impl Default for Inst {
             top_align: 0,
             bottom_align: 0,
             visible: true,
+            top_visible: true,
+            bottom_visible: true,
             embedded: false,
         }
     }
+}
+
+/// Whether the instance should be on screen and reserve layout space at all:
+/// the instance-level switch AND at least one visible line. With both lines
+/// hidden the instance behaves exactly like a hidden one (window hidden, no
+/// slot in the layout) while `visible` itself keeps its value, so re-showing
+/// either line restores it without another `set_visible` call.
+fn effective_visible(inst: &Inst) -> bool {
+    inst.visible && (inst.top_visible || inst.bottom_visible)
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +405,12 @@ pub fn set_alignment(id: String, top: i32, bottom: i32) -> crate::Result<()> {
 pub fn set_visible(id: String, visible: bool) -> crate::Result<()> {
     start_if_needed();
     post(UiCommand::SetVisible { id, visible });
+    Ok(())
+}
+
+pub fn set_line_visible(id: String, top: bool, bottom: bool) -> crate::Result<()> {
+    start_if_needed();
+    post(UiCommand::SetLineVisible { id, top, bottom });
     Ok(())
 }
 
@@ -576,7 +599,7 @@ fn keep_on_top() {
                 && nr.left < tb_rect.right
             {
                 for inst in guard.values() {
-                    if inst.side != Side::Right || !inst.visible {
+                    if inst.side != Side::Right || !effective_visible(inst) {
                         continue;
                     }
                     let mut r = rect_zero();
@@ -589,7 +612,7 @@ fn keep_on_top() {
             }
         }
         for inst in guard.values() {
-            if !inst.visible {
+            if !effective_visible(inst) {
                 continue;
             }
             // Off-taskbar check (horizontal only — left/right edges are the
@@ -787,6 +810,26 @@ fn handle_command(cmd: UiCommand) {
             }
             // Relayout so hidden instances stop reserving space (their
             // neighbours fill the gap) and re-shown ones take a slot again.
+            relayout_all();
+        }
+        UiCommand::SetLineVisible { id, top, bottom } => {
+            let mut hwnd = 0;
+            let mut now_hidden = false;
+            if let Some(inst) = guard.get_mut(&id) {
+                inst.top_visible = top;
+                inst.bottom_visible = bottom;
+                hwnd = inst.hwnd;
+                now_hidden = !effective_visible(inst);
+            }
+            drop(guard);
+            // With both lines hidden the instance is fully hidden; relayout
+            // skips it (no slot), so the window must be hidden here or it
+            // would keep showing stale content at its old size.
+            if hwnd != 0 && now_hidden {
+                unsafe { ShowWindow(hwnd, SW_HIDE) };
+            }
+            // The window size and layout slot both depend on how many lines
+            // are visible, so always relayout (which repaints shown ones).
             relayout_all();
         }
         UiCommand::Relayout => {
@@ -1056,7 +1099,7 @@ fn relayout_all() {
             if let Some(hwnd) = create_window(id) {
                 inst.hwnd = hwnd;
                 inst.embedded = false;
-                if inst.visible {
+                if effective_visible(inst) {
                     unsafe { ShowWindow(hwnd, SW_SHOW) };
                 }
             }
@@ -1064,10 +1107,11 @@ fn relayout_all() {
     }
 
     // Self-heal visibility: while the taskbar rebuilds its child tree it can
-    // hide our embedded windows; a surviving window whose `visible` flag says
-    // it should be shown gets re-shown on every relayout.
+    // hide our embedded windows; a surviving window whose effective visibility
+    // says it should be shown gets re-shown on every relayout. Instances with
+    // both lines hidden (or `visible == false`) stay hidden.
     for inst in guard.values() {
-        if inst.visible && unsafe { IsWindowVisible(inst.hwnd) } == 0 {
+        if effective_visible(inst) && unsafe { IsWindowVisible(inst.hwnd) } == 0 {
             unsafe { ShowWindow(inst.hwnd, SW_SHOW) };
         }
     }
@@ -1120,7 +1164,7 @@ fn relayout_all() {
         let mut cursor = taskbar.right_edge_for_right() - em.right;
         for id in &right_ids {
             if let Some(inst) = guard.get_mut(id) {
-                if !inst.visible {
+                if !effective_visible(inst) {
                     continue; // hidden instances do not reserve space
                 }
                 let (w, h) = measure(inst);
@@ -1138,7 +1182,7 @@ fn relayout_all() {
         let mut cursor = taskbar.left_edge_for_left() + em.left;
         for id in &left_ids {
             if let Some(inst) = guard.get_mut(id) {
-                if !inst.visible {
+                if !effective_visible(inst) {
                     continue;
                 }
                 let (w, h) = measure(inst);
@@ -1156,7 +1200,7 @@ fn relayout_all() {
         let mut cursor_y = taskbar.rect.top + m;
         for id in &right_ids {
             if let Some(inst) = guard.get_mut(id) {
-                if !inst.visible {
+                if !effective_visible(inst) {
                     continue;
                 }
                 let (w, h) = measure(inst);
@@ -1172,7 +1216,7 @@ fn relayout_all() {
         let mut cursor_y = taskbar.rect.top + m;
         for id in &left_ids {
             if let Some(inst) = guard.get_mut(id) {
-                if !inst.visible {
+                if !effective_visible(inst) {
                     continue;
                 }
                 let (w, h) = measure(inst);
@@ -1294,23 +1338,34 @@ fn pt_to_px(pt: f64, dpi: i32) -> i32 {
     (pt * dpi as f64 / 72.0).round() as i32
 }
 
-/// Measure an instance's window size from its two lines (no drawing).
+/// Measure an instance's window size from its **visible** lines (no drawing).
+/// Hidden lines contribute nothing, so with one line hidden the window
+/// shrinks to the other line and `relayout_all`'s `center_y` re-centres it
+/// vertically in the taskbar.
 fn measure(inst: &Inst) -> (i32, i32) {
     let d = dpi();
-    let (tw, th) = measure_text(
-        &inst.top,
-        pt_to_px(inst.top_size, d),
-        inst.top_bold,
-        inst.top_face.as_deref(),
-    );
-    let (bw, bh) = measure_text(
-        &inst.bottom,
-        pt_to_px(inst.bottom_size, d),
-        inst.bottom_bold,
-        inst.bottom_face.as_deref(),
-    );
-    let w = tw.max(bw) + inst.pad_left + inst.pad_right;
-    let h = th + LINE_GAP + bh;
+    let mut w = inst.pad_left + inst.pad_right;
+    let mut h = 1;
+    if inst.top_visible {
+        let (tw, th) = measure_text(
+            &inst.top,
+            pt_to_px(inst.top_size, d),
+            inst.top_bold,
+            inst.top_face.as_deref(),
+        );
+        w = w.max(tw + inst.pad_left + inst.pad_right);
+        h = th;
+    }
+    if inst.bottom_visible {
+        let (bw, bh) = measure_text(
+            &inst.bottom,
+            pt_to_px(inst.bottom_size, d),
+            inst.bottom_bold,
+            inst.bottom_face.as_deref(),
+        );
+        w = w.max(bw + inst.pad_left + inst.pad_right);
+        h = if inst.top_visible { h + LINE_GAP + bh } else { bh };
+    }
     (w.max(1), h.max(1))
 }
 
@@ -1605,24 +1660,31 @@ fn paint_inst(inst: &mut Inst) {
     let d = dpi();
     let top_sz = pt_to_px(inst.top_size, d);
     let bot_sz = pt_to_px(inst.bottom_size, d);
-    let (tw, th, top_cov) = render_line(
-        &inst.top,
-        top_sz,
-        inst.top_bold,
-        inst.top_face.as_deref(),
-    );
-    let (bw, bh, bot_cov) = render_line(
-        &inst.bottom,
-        bot_sz,
-        inst.bottom_bold,
-        inst.bottom_face.as_deref(),
-    );
+    // Only visible lines are rendered — hidden ones contribute nothing to the
+    // bitmap (and `measure` has already shrunk the window accordingly).
+    let top = if inst.top_visible {
+        Some(render_line(
+            &inst.top,
+            top_sz,
+            inst.top_bold,
+            inst.top_face.as_deref(),
+        ))
+    } else {
+        None
+    };
+    let bot = if inst.bottom_visible {
+        Some(render_line(
+            &inst.bottom,
+            bot_sz,
+            inst.bottom_bold,
+            inst.bottom_face.as_deref(),
+        ))
+    } else {
+        None
+    };
 
     let w = inst.w.max(1);
     let h = inst.h.max(1);
-
-    let top_x = align_x(inst.top_align, tw, w, inst.pad_left, inst.pad_right);
-    let bot_x = align_x(inst.bottom_align, bw, w, inst.pad_left, inst.pad_right);
 
     let (tr, tg, tb) = resolve_color(&inst.top_color);
     let (br, bg, bb) = resolve_color(&inst.bottom_color);
@@ -1642,40 +1704,52 @@ fn paint_inst(inst: &mut Inst) {
         unsafe { bits_u32.add(i).write(0x0100_0000) };
     }
 
-    // Top band.
-    blit_line(
-        bits_u32,
-        w as usize,
-        h as usize,
-        0,
-        top_x as usize,
-        tw as usize,
-        th as usize,
-        &top_cov,
-        tr,
-        tg,
-        tb,
-    );
-    // Bottom band.
-    let bot_y = (th + LINE_GAP) as usize;
-    blit_line(
-        bits_u32,
-        w as usize,
-        h as usize,
-        bot_y,
-        bot_x as usize,
-        bw as usize,
-        bh as usize,
-        &bot_cov,
-        br,
-        bg,
-        bb,
-    );
+    // Top band, anchored at y=0. When the bottom line is hidden too, this is
+    // the only band and fills the single-line window.
+    if let Some((tw, th, top_cov)) = &top {
+        let top_x = align_x(inst.top_align, *tw, w, inst.pad_left, inst.pad_right);
+        blit_line(
+            bits_u32,
+            w as usize,
+            h as usize,
+            0,
+            top_x as usize,
+            *tw as usize,
+            *th as usize,
+            top_cov,
+            tr,
+            tg,
+            tb,
+        );
+    }
+    // Bottom band: right below the top band (plus the fixed internal gap)
+    // when both lines show, else at y=0 so the single remaining line sits in
+    // the shrunken window that `center_y` keeps vertically centred.
+    if let Some((bw, bh, bot_cov)) = &bot {
+        let bot_y = match &top {
+            Some((_, th, _)) => (*th + LINE_GAP) as usize,
+            None => 0,
+        };
+        let bot_x = align_x(inst.bottom_align, *bw, w, inst.pad_left, inst.pad_right);
+        blit_line(
+            bits_u32,
+            w as usize,
+            h as usize,
+            bot_y,
+            bot_x as usize,
+            *bw as usize,
+            *bh as usize,
+            bot_cov,
+            br,
+            bg,
+            bb,
+        );
+    }
 
     let hwnd = inst.hwnd;
     let x = inst.x;
     let y = inst.y;
-    let visible = inst.visible;
+    let visible = effective_visible(inst);
     let embedded = inst.embedded;
     // Embedded children are positioned in taskbar client coordinates;
     // top-level fallback windows use screen coordinates. ScreenToClient is
@@ -2006,6 +2080,8 @@ fn instance_state_json(id: &str) -> Option<serde_json::Value> {
         "bottomBold": inst.bottom_bold,
         "topAlign": inst.top_align,
         "bottomAlign": inst.bottom_align,
+        "topVisible": inst.top_visible,
+        "bottomVisible": inst.bottom_visible,
     }))
 }
 

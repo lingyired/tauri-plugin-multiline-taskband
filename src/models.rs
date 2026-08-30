@@ -209,6 +209,23 @@ pub struct SetVisibleRequest {
     pub visible: bool,
 }
 
+/// Per-line visibility for the two taskbar lines.
+///
+/// Each line is independent: `top`/`bottom` being `false` hides that line
+/// entirely. With one line hidden the other is centred vertically in the
+/// taskbar (the instance window shrinks to a single line). With both hidden
+/// the whole instance stops rendering and reserving space — like
+/// [`SetVisibleRequest`] with `visible: false` — but the instance-level
+/// `visible` flag is unchanged, so showing either line again restores it
+/// without another `set_visible` call.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetLineVisibleRequest {
+    pub id: String,
+    pub top: bool,
+    pub bottom: bool,
+}
+
 /// Select which Tauri webview window is used as the settings popup.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

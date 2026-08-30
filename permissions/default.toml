@@ -24,6 +24,7 @@ permissions = [
   "allow-set-bold",
   "allow-set-alignment",
   "allow-set-visible",
+  "allow-set-line-visible",
   "allow-rect",
   "allow-is-visible",
   "allow-set-auto-popup",

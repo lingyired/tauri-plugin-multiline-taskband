@@ -219,6 +219,18 @@ impl<R: Runtime> MultilineTaskband<R> {
         }
     }
 
+    pub fn set_line_visible(&self, id: String, top: bool, bottom: bool) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_line_visible(id, top, bottom)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (id, top, bottom);
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
     pub fn rect(&self, id: String) -> crate::Result<Rect> {
         #[cfg(target_os = "windows")]
         {

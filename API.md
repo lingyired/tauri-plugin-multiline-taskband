@@ -88,7 +88,8 @@ All functions are async and return a `Promise`.
 | Function | Signature | Description |
 |---|---|---|
 | `setVisible` | `setVisible(options: SetVisibleOptions): Promise<void>` | Show/hide an instance without destroying it. |
-| `isVisible` | `isVisible(options: IdOptions): Promise<boolean>` | Current visibility of an instance. |
+| `setLineVisible` | `setLineVisible(options: SetLineVisibleOptions): Promise<void>` | Show/hide the top and bottom lines independently (`true` = shown, each line independent). Hiding one line shrinks the instance to the other, which stays vertically centred in the taskbar; hiding both hides the whole instance (like `setVisible(false)`) but leaves the instance-level visibility unchanged, so showing either line again restores it without another `setVisible` call. See [SetLineVisibleOptions](#setlinevisibleoptions). |
+| `isVisible` | `isVisible(options: IdOptions): Promise<boolean>` | Current visibility of an instance (the instance-level flag — see [SetLineVisibleOptions](#setlinevisibleoptions) for how it interacts with per-line hiding). |
 | `rect` | `rect(options: IdOptions): Promise<Rect>` | On-screen rectangle of an instance in **physical pixels** (origin top-left, y down). Useful for anchoring your own windows. |
 | `setPadding` | `setPadding(options: SetPaddingOptions): Promise<void>` | Per-instance horizontal padding between the window edges and the text, in physical pixels. `left` and `right` can differ; defaults to `4` / `4`. |
 | `setMargin` | `setMargin(options: SetMarginOptions): Promise<void>` | **Global** margin between adjacent instances, in physical pixels (no `id`). Defaults to `4`. The gap between the two text lines *inside* an instance is a fixed internal style and is not affected. |
@@ -250,6 +251,20 @@ await setFontFamily({ id: 'group-a', top: null, bottom: 'Consolas' })
 await setAlignment({ id: 'group-a', top: 0, bottom: 2 }) // name left, value right
 ```
 
+### SetLineVisibleOptions
+
+Per-line visibility for the two lines, independent of the instance-level `setVisible`:
+
+```js
+// Hide the bottom line: the instance shrinks to the top line, which stays
+// vertically centred in the taskbar.
+await setLineVisible({ id: 'group-a', top: true, bottom: false })
+// Both false: the whole instance stops rendering and reserving space —
+// like setVisible(false) — but `isVisible` still reports the instance-level
+// flag, and showing either line again restores it without setVisible.
+await setLineVisible({ id: 'group-a', top: false, bottom: false })
+```
+
 ### MenuItemDescriptor
 
 A right-click context-menu item descriptor. Mirrors the menubar plugin's type one-for-one, so the same menu tree works on both platforms:
@@ -302,6 +317,8 @@ interface InstanceState {
   bottomBold: boolean
   topAlign: number
   bottomAlign: number
+  topVisible: boolean
+  bottomVisible: boolean
 }
 ```
 
@@ -327,6 +344,7 @@ All guest-js functions are thin wrappers over these. Payloads are wrapped in a s
 | `plugin:multiline-taskband\|set_bold` | `{ id, top, bottom }` |
 | `plugin:multiline-taskband\|set_alignment` | `{ id, top, bottom }` |
 | `plugin:multiline-taskband\|set_visible` | `{ id, visible }` |
+| `plugin:multiline-taskband\|set_line_visible` | `{ id, top, bottom }` |
 | `plugin:multiline-taskband\|rect` | `{ id }` → `Rect` |
 | `plugin:multiline-taskband\|is_visible` | `{ id }` → `{ visible }` |
 | `plugin:multiline-taskband\|set_popup_window` | `{ label }` |
@@ -365,6 +383,7 @@ app.multiline_taskband().set_text("group-a".into(), "A股".into(), "+1.23%".into
 | `set_bold(id, top, bottom)` | `set_bold` |
 | `set_alignment(id, top, bottom)` | `set_alignment` |
 | `set_visible(id, visible)` | `set_visible` |
+| `set_line_visible(id, top, bottom)` | `set_line_visible` |
 | `rect(id)` | `rect` |
 | `is_visible(id)` | `is_visible` |
 | `set_popup_window(label)` | `set_popup_window` |
@@ -380,7 +399,7 @@ All methods return `crate::Result<T>` (`tauri_plugin_multiline_taskband::Result`
 
 The default permission set (`multiline-taskband:default`) covers core rendering + read-only queries:
 
-`allow-create`, `allow-set-text`, `allow-set-font-sizes`, `allow-set-font-family`, `allow-set-padding`, `allow-set-side`, `allow-set-order`, `allow-set-margin`, `allow-set-edge-margins`, `allow-set-colors`, `allow-set-bold`, `allow-set-alignment`, `allow-set-visible`, `allow-rect`, `allow-is-visible`, `allow-set-auto-popup`
+`allow-create`, `allow-set-text`, `allow-set-font-sizes`, `allow-set-font-family`, `allow-set-padding`, `allow-set-side`, `allow-set-order`, `allow-set-margin`, `allow-set-edge-margins`, `allow-set-colors`, `allow-set-bold`, `allow-set-alignment`, `allow-set-visible`, `allow-set-line-visible`, `allow-rect`, `allow-is-visible`, `allow-set-auto-popup`
 
 High-impact commands are intentionally **not** in the default set — grant them explicitly:
 
@@ -411,7 +430,7 @@ All commands serialise errors as strings; the possible variants are:
 
 - Error behaviour is asymmetric by design: the `set_*` commands silently no-op when given an unknown `id` (they are fire-and-forget), while the queries `rect` / `is_visible` reject an unknown `id` with `InstanceNotFound`.
 - All pixel values (padding, margin, `rect`) are **physical** pixels, not logical/DIP.
-- Font sizes are in **points**; both lines default to `9` (matching TrafficMonitor's taskbar font). The window is sized automatically: width from the wider line plus padding, height from the sum of both lines' full cell heights plus a fixed internal line gap — the `tmInternalLeading` is deliberately not trimmed and each line is vertically centred with `DT_VCENTER`, so glyphs are never clipped (see `docs/debug-text-rendering-clip.md`).
+- Font sizes are in **points**; both lines default to `9` (matching TrafficMonitor's taskbar font). The window is sized automatically: width from the wider **visible** line plus padding, height from the sum of the **visible** lines' full cell heights plus a fixed internal line gap (only between two shown lines) — the `tmInternalLeading` is deliberately not trimmed and each line is vertically centred with `DT_VCENTER`, so glyphs are never clipped (see `docs/debug-text-rendering-clip.md`). Hiding a line via `setLineVisible` therefore shrinks the window and the remaining line stays vertically centred in the taskbar.
 - Instances survive taskbar moves and explorer restarts: a `WinEventHook` on the taskbar re-lays-out every instance when the taskbar moves/resizes (DPI change, monitor change) and recreates overlays if the taskbar window is rebuilt. Clicking the taskbar does not hide the overlays (a keep-alive timer re-asserts topmost z-order when needed).
 - `set_margin` is global — it affects every instance, including ones created later. `set_padding` is per-instance.
 - `setEdgeMargins` is also global, and is clamped to `>= 0`: `left` offsets the left-side group's stacking start from `taskbar left edge + 2` and `right` offsets the right-side group's stacking start from the tray edge, so larger values push each whole group further into the free taskbar space. Both default to `0`; on vertical taskbars they are ignored.

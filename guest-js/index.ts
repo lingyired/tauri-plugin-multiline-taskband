@@ -148,6 +148,23 @@ export interface SetVisibleOptions {
   visible: boolean
 }
 
+/**
+ * Per-line visibility for the two taskbar lines.
+ *
+ * Hiding one line shrinks the instance to the other line, which stays
+ * vertically centred in the taskbar. With both lines hidden the whole
+ * instance stops rendering and reserving space (like `setVisible(false)`),
+ * but the instance-level visibility is unchanged — showing either line
+ * again restores it without another `setVisible` call.
+ */
+export interface SetLineVisibleOptions {
+  id: string
+  /** Whether the top line is shown. */
+  top: boolean
+  /** Whether the bottom line is shown. */
+  bottom: boolean
+}
+
 /** Select which Tauri webview window is used as the settings popup. */
 export interface PopupWindowOptions {
   /** Window label (as registered in `tauri.conf.json`). */
@@ -338,6 +355,13 @@ export async function setAlignment(options: SetAlignmentOptions): Promise<void> 
 
 export async function setVisible(options: SetVisibleOptions): Promise<void> {
   return await invoke('plugin:multiline-taskband|set_visible', { payload: options })
+}
+
+/**
+ * Show/hide the top and bottom lines independently.
+ */
+export async function setLineVisible(options: SetLineVisibleOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_line_visible', { payload: options })
 }
 
 /** Returns the on-screen rectangle of an instance in physical pixels. */

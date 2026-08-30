@@ -128,6 +128,15 @@ pub(crate) async fn set_visible<R: Runtime>(
 }
 
 #[command]
+pub(crate) async fn set_line_visible<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetLineVisibleRequest,
+) -> crate::Result<()> {
+    app.multiline_taskband()
+        .set_line_visible(payload.id, payload.top, payload.bottom)
+}
+
+#[command]
 pub(crate) async fn rect<R: Runtime>(
     app: AppHandle<R>,
     payload: IdRequest,
