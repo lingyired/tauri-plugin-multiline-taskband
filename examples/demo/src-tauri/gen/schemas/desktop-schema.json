@@ -2361,10 +2361,10 @@
           "markdownDescription": "Denies the unminimize command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the multiline-taskband plugin (core rendering + read-only queries). High-impact commands (remove, menu injection, popup window control) are intentionally NOT included — grant them explicitly, e.g. `multiline-taskband:allow-remove`.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-font-family`\n- `allow-set-padding`\n- `allow-set-side`\n- `allow-set-order`\n- `allow-set-margin`\n- `allow-set-edge-margins`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-auto-popup`",
+          "description": "Default permissions for the multiline-taskband plugin (core rendering + read-only queries). High-impact commands (remove, menu injection, popup window control) are intentionally NOT included — grant them explicitly, e.g. `multiline-taskband:allow-remove`.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-font-family`\n- `allow-set-padding`\n- `allow-set-side`\n- `allow-set-order`\n- `allow-set-margin`\n- `allow-set-edge-margins`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-set-line-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-auto-popup`",
           "type": "string",
           "const": "multiline-taskband:default",
-          "markdownDescription": "Default permissions for the multiline-taskband plugin (core rendering + read-only queries). High-impact commands (remove, menu injection, popup window control) are intentionally NOT included — grant them explicitly, e.g. `multiline-taskband:allow-remove`.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-font-family`\n- `allow-set-padding`\n- `allow-set-side`\n- `allow-set-order`\n- `allow-set-margin`\n- `allow-set-edge-margins`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-auto-popup`"
+          "markdownDescription": "Default permissions for the multiline-taskband plugin (core rendering + read-only queries). High-impact commands (remove, menu injection, popup window control) are intentionally NOT included — grant them explicitly, e.g. `multiline-taskband:allow-remove`.\n#### This default permission set includes:\n\n- `allow-create`\n- `allow-set-text`\n- `allow-set-font-sizes`\n- `allow-set-font-family`\n- `allow-set-padding`\n- `allow-set-side`\n- `allow-set-order`\n- `allow-set-margin`\n- `allow-set-edge-margins`\n- `allow-set-colors`\n- `allow-set-bold`\n- `allow-set-alignment`\n- `allow-set-visible`\n- `allow-set-line-visible`\n- `allow-rect`\n- `allow-is-visible`\n- `allow-set-auto-popup`"
         },
         {
           "description": "Enables the close_popup command without any pre-configured scope.",
@@ -2443,6 +2443,12 @@
           "type": "string",
           "const": "multiline-taskband:allow-set-font-sizes",
           "markdownDescription": "Enables the set_font_sizes command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_line_visible command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:allow-set-line-visible",
+          "markdownDescription": "Enables the set_line_visible command without any pre-configured scope."
         },
         {
           "description": "Enables the set_margin command without any pre-configured scope.",
@@ -2575,6 +2581,12 @@
           "type": "string",
           "const": "multiline-taskband:deny-set-font-sizes",
           "markdownDescription": "Denies the set_font_sizes command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_line_visible command without any pre-configured scope.",
+          "type": "string",
+          "const": "multiline-taskband:deny-set-line-visible",
+          "markdownDescription": "Denies the set_line_visible command without any pre-configured scope."
         },
         {
           "description": "Denies the set_margin command without any pre-configured scope.",
