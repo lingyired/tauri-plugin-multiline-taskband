@@ -1374,8 +1374,13 @@ fn measure_text(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i3
     if hdc == 0 {
         return ((text.len() as i32 * size_px).max(1), size_px.max(1));
     }
+    // `#[allow]`: the fn-pointer form `face.or_else(default_face)` unifies `T`
+    // to `&'static str` (`default_face` is `fn() -> Option<&'static str>`)
+    // and fails with E0521 against the caller's shorter-lived `face`; the
+    // closure covaries its return to the caller's lifetime instead.
+    #[allow(clippy::redundant_closure)]
     let effective_face = face.or_else(|| default_face());
-    let font = make_font(size_px, bold, effective_face.as_deref(), DEFAULT_QUALITY);
+    let font = make_font(size_px, bold, effective_face, DEFAULT_QUALITY);
     let old = unsafe { SelectObject(hdc, font) };
     unsafe { SetBkMode(hdc, TRANSPARENT as i32) };
     let wtext = to_wide(text);
@@ -1426,8 +1431,13 @@ fn measure_text(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i3
 ///    (the same premultiplied pixels TrafficMonitor's D2D path produces).
 fn render_line(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i32, i32, Vec<u32>) {
     let hdc = unsafe { CreateCompatibleDC(0) };
+    // `#[allow]`: the fn-pointer form `face.or_else(default_face)` unifies `T`
+    // to `&'static str` (`default_face` is `fn() -> Option<&'static str>`)
+    // and fails with E0521 against the caller's shorter-lived `face`; the
+    // closure covaries its return to the caller's lifetime instead.
+    #[allow(clippy::redundant_closure)]
     let effective_face = face.or_else(|| default_face());
-    let font = make_font(size_px, bold, effective_face.as_deref(), DEFAULT_QUALITY);
+    let font = make_font(size_px, bold, effective_face, DEFAULT_QUALITY);
     let old = unsafe { SelectObject(hdc, font) };
     unsafe { SetBkMode(hdc, TRANSPARENT as i32) };
 
@@ -1479,8 +1489,8 @@ fn render_line(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i32
     let wu = w as usize;
     let hu = full_h as usize;
     let mut coverage = vec![0u32; wu * hu];
-    for i in 0..(wu * hu) {
-        coverage[i] = unsafe { *bits_u32.add(i) };
+    for (i, c) in coverage.iter_mut().enumerate() {
+        *c = unsafe { *bits_u32.add(i) };
     }
 
     unsafe {
@@ -1833,9 +1843,9 @@ fn blit_line(
         let dy = off_y + ly;
         for lx in 0..line_w {
             let px = coverage[ly * line_w + lx];
-            let cr = ((px >> 16) & 0xFF) as u32;
-            let cg = ((px >> 8) & 0xFF) as u32;
-            let cb = (px & 0xFF) as u32;
+            let cr = (px >> 16) & 0xFF;
+            let cg = (px >> 8) & 0xFF;
+            let cb = px & 0xFF;
             let a = ((cr + cg + cb) / 3) as u8;
             if a == 0 {
                 continue;
