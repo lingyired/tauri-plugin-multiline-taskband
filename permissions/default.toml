@@ -25,6 +25,7 @@ permissions = [
   "allow-set-alignment",
   "allow-set-visible",
   "allow-set-line-visible",
+  "allow-set-icon",
   "allow-rect",
   "allow-is-visible",
   "allow-set-auto-popup",

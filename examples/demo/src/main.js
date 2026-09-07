@@ -360,6 +360,13 @@ async function applyAppearance(id) {
       })
     );
   }
+  if (s.topIcon || s.bottomIcon) {
+    jobs.push(
+      invoke("plugin:multiline-taskband|set_icon", {
+        payload: { id, top: s.topIcon ?? null, bottom: s.bottomIcon ?? null },
+      })
+    );
+  }
   await Promise.all(jobs).catch((err) => console.error(`applyAppearance ${id}:`, err));
 }
 

@@ -22,7 +22,7 @@
 // Instance: { shown, topShown, bottomShown, side, top, bottom, topSize,
 //             bottomSize, topFontFamily, bottomFontFamily, leftPadding,
 //             rightPadding, topColor, bottomColor, topBold, bottomBold,
-//             topAlign, bottomAlign }
+//             topAlign, bottomAlign, topIcon, bottomIcon }
 // `shown` hides the whole instance; `topShown`/`bottomShown` hide individual
 // lines (both false = the instance renders nothing, like shown === false).
 //
@@ -74,6 +74,9 @@ export function instanceDefaults(id, side = "right") {
     bottomBold: false,
     topAlign: 0,
     bottomAlign: 0,
+    // Leading icons: `{ path, tint? }` or `{ data, tint? }`, else `null`.
+    topIcon: null,
+    bottomIcon: null,
   };
 }
 

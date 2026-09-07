@@ -136,6 +136,26 @@ pub(crate) async fn set_line_visible<R: Runtime>(
         .set_line_visible(payload.id, payload.top, payload.bottom)
 }
 
+/// Per-line leading icon. `None` clears that line's icon; the other line is
+/// left alone.
+#[command]
+pub(crate) async fn set_icon<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetIconRequest,
+) -> crate::Result<()> {
+    // Reject specs that set neither or both sources — a silently ignored icon
+    // is far harder to debug than an explicit error.
+    for icon in [&payload.top, &payload.bottom].into_iter().flatten() {
+        if !icon.is_valid() {
+            return Err(crate::Error::InvalidArgument(
+                "icon must set exactly one of `path` or `data`".into(),
+            ));
+        }
+    }
+    app.multiline_taskband()
+        .set_icon(payload.id, payload.top, payload.bottom)
+}
+
 #[command]
 pub(crate) async fn rect<R: Runtime>(
     app: AppHandle<R>,

@@ -97,6 +97,12 @@ const els = {
   bottomSizeVal: $("popup-bottom-size-value"),
   topFamily: $("popup-top-family"),
   bottomFamily: $("popup-bottom-family"),
+  topIconPath: $("popup-top-icon-path"),
+  topIconData: $("popup-top-icon-data"),
+  topIconTint: $("popup-top-icon-tint"),
+  bottomIconPath: $("popup-bottom-icon-path"),
+  bottomIconData: $("popup-bottom-icon-data"),
+  bottomIconTint: $("popup-bottom-icon-tint"),
   topSolidRow: $("popup-top-solid-row"),
   bottomSolidRow: $("popup-bottom-solid-row"),
   topColor: $("popup-top-color"),
@@ -252,6 +258,28 @@ const applyLineVisible = () => {
   apply("set_line_visible", { top, bottom }, { topShown: top, bottomShown: bottom });
 };
 
+/**
+ * Build one line's `IconSpec` from the UI, or `null` for "no icon".
+ *
+ * `path` and `data` are mutually exclusive — the plugin rejects a spec that
+ * sets both — so a filled path wins and inline content is only used when the
+ * path is empty.
+ */
+function readIcon(line) {
+  const path = els[`${line}IconPath`].value.trim();
+  const data = els[`${line}IconData`].value.trim();
+  const tint = els[`${line}IconTint`].checked;
+  if (path) return { path, tint };
+  if (data) return { data, tint };
+  return null;
+}
+
+const applyIcons = () => {
+  const top = readIcon("top");
+  const bottom = readIcon("bottom");
+  apply("set_icon", { top, bottom }, { topIcon: top, bottomIcon: bottom });
+};
+
 // Dim a line section's edit controls while its "Show" switch is off.
 function syncLineDim() {
   for (const [line, shown] of [["top", els.topShown], ["bottom", els.bottomShown]]) {
@@ -311,6 +339,15 @@ function fill(p) {
     }
   }
 
+  // Per-line icons: absent/null = none. A spec carries either a `path` or
+  // `data` payload; prefill whichever side of the input pair is populated.
+  for (const line of ["top", "bottom"]) {
+    const icon = line === "top" ? p.topIcon : p.bottomIcon;
+    els[`${line}IconPath`].value = icon?.path || "";
+    els[`${line}IconData`].value = icon?.data || "";
+    els[`${line}IconTint`].checked = !!icon?.tint;
+  }
+
   if (p.side === "left" || p.side === "right") {
     setPressed(segGroups.side, p.side, "side");
     els.sideDot.dataset.side = p.side;
@@ -336,6 +373,8 @@ function fill(p) {
     bottomAlign: Number(p.bottomAlign) || 0,
     topShown: els.topShown.checked,
     bottomShown: els.bottomShown.checked,
+    topIcon: p.topIcon ?? null,
+    bottomIcon: p.bottomIcon ?? null,
   };
   persistState();
   renderPreview();
@@ -424,6 +463,17 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Icons: applied on commit — path/data edits are typed, so applying on every
+  // keystroke would fire a rasterise per character. Tint is instant.
+  for (const line of lineNames) {
+    const path = els[`${line}IconPath`];
+    const data = els[`${line}IconData`];
+    const tint = els[`${line}IconTint`];
+    path.addEventListener("change", applyIcons);
+    data.addEventListener("change", applyIcons);
+    tint.addEventListener("change", applyIcons);
+  }
+
   // Alignment segmented buttons.
   for (const line of lineNames) {
     segGroups[`align-${line}`].addEventListener("click", (e) => {
@@ -479,6 +529,11 @@ window.addEventListener("DOMContentLoaded", () => {
     els.topShown.checked = true;
     els.bottomShown.checked = true;
     syncLineDim();
+    for (const line of ["top", "bottom"]) {
+      els[`${line}IconPath`].value = "";
+      els[`${line}IconData`].value = "";
+      els[`${line}IconTint`].checked = false;
+    }
     alignSel.top = 0;
     alignSel.bottom = 0;
     setPressed(segGroups["align-top"], 0, "align");
@@ -500,6 +555,9 @@ window.addEventListener("DOMContentLoaded", () => {
       invoke("plugin:multiline-taskband|set_line_visible", {
         payload: { id, top: true, bottom: true },
       }),
+      invoke("plugin:multiline-taskband|set_icon", {
+        payload: { id, top: null, bottom: null },
+      }),
     ])
       .then(() => {
         Object.assign(currentState, {
@@ -519,6 +577,8 @@ window.addEventListener("DOMContentLoaded", () => {
           bottomAlign: 0,
           topShown: true,
           bottomShown: true,
+          topIcon: null,
+          bottomIcon: null,
         });
         persistState();
         flashSaved(true);

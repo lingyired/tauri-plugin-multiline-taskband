@@ -56,8 +56,10 @@
 //! Windows machine from this repo yet — see README.md for the verification
 //! checklist before shipping.
 
-use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
+use std::hash::{Hash, Hasher};
 use std::os::windows::ffi::OsStrExt;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -70,6 +72,7 @@ use tauri::menu::{
     PredefinedMenuItem as TauriPredefined, SubmenuBuilder as TauriSubmenuBuilder,
 };
 use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent, Wry};
+use base64::Engine as _;
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -80,7 +83,8 @@ use windows_sys::Win32::UI::Accessibility::*;
 use windows_sys::Win32::UI::HiDpi::{GetDpiForSystem, SetProcessDpiAwareness, PROCESS_PER_MONITOR_DPI_AWARE};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-use crate::models::{ColorStyle, MenuItemDescriptor, Rect, Side};
+use crate::models::{ColorStyle, IconSpec, MenuItemDescriptor, Rect, Side};
+use crate::pixels;
 
 // ---------------------------------------------------------------------------
 // Small local constants (avoid depending on glob re-exports that may differ
@@ -130,6 +134,11 @@ enum UiCommand {
     SetAlignment { id: String, top: i32, bottom: i32 },
     SetVisible { id: String, visible: bool },
     SetLineVisible { id: String, top: bool, bottom: bool },
+    SetIcon {
+        id: String,
+        top: Option<IconSpec>,
+        bottom: Option<IconSpec>,
+    },
     Relayout,
 }
 
@@ -248,6 +257,11 @@ struct Inst {
     /// false` for rendering/layout, but leaves the `visible` flag untouched.
     top_visible: bool,
     bottom_visible: bool,
+    /// Leading icon per line (`None` = no icon). Only the spec is stored — the
+    /// decoded pixels live in the shared `ICON_CACHE` so several instances can
+    /// reference the same asset without decoding it twice.
+    top_icon: Option<IconSpec>,
+    bottom_icon: Option<IconSpec>,
     /// True when the window has been embedded as a child of the taskbar
     /// (`SetParent`). Embedded children are painted in taskbar client
     /// coordinates and never need z-order maintenance.
@@ -286,6 +300,8 @@ impl Default for Inst {
             visible: true,
             top_visible: true,
             bottom_visible: true,
+            top_icon: None,
+            bottom_icon: None,
             embedded: false,
         }
     }
@@ -411,6 +427,19 @@ pub fn set_visible(id: String, visible: bool) -> crate::Result<()> {
 pub fn set_line_visible(id: String, top: bool, bottom: bool) -> crate::Result<()> {
     start_if_needed();
     post(UiCommand::SetLineVisible { id, top, bottom });
+    Ok(())
+}
+
+/// Per-line leading icon. `None` clears that line's icon. Validation of the
+/// spec (`path` XOR `data`) happens in `commands.rs`; a bad asset is not an
+/// error here — it is logged and the line simply renders without an icon.
+pub fn set_icon(
+    id: String,
+    top: Option<IconSpec>,
+    bottom: Option<IconSpec>,
+) -> crate::Result<()> {
+    start_if_needed();
+    post(UiCommand::SetIcon { id, top, bottom });
     Ok(())
 }
 
@@ -701,6 +730,9 @@ fn handle_command(cmd: UiCommand) {
             if let Some(inst) = guard.remove(&id) {
                 unsafe { DestroyWindow(inst.hwnd) };
                 drop(guard);
+                // Drop decoded icons no remaining instance references,
+                // otherwise removing instances would leak them.
+                prune_icon_cache();
                 relayout_all();
             }
         }
@@ -830,6 +862,17 @@ fn handle_command(cmd: UiCommand) {
             }
             // The window size and layout slot both depend on how many lines
             // are visible, so always relayout (which repaints shown ones).
+            relayout_all();
+        }
+        UiCommand::SetIcon { id, top, bottom } => {
+            if let Some(inst) = guard.get_mut(&id) {
+                inst.top_icon = top;
+                inst.bottom_icon = bottom;
+            }
+            drop(guard);
+            // An icon contributes its own width to the line, so the window has
+            // to be re-measured and its neighbours re-spaced; a plain repaint
+            // would leave the old (narrower) width in place.
             relayout_all();
         }
         UiCommand::Relayout => {
@@ -1036,6 +1079,10 @@ const LINE_GAP: i32 = 4;
 /// Per-instance horizontal padding (window edge to text), the `set_padding`
 /// default. Exposed per-instance via `set_padding`.
 const PAD: i32 = 4;
+
+/// Gap (physical px) between a line's leading icon and its text. Matches
+/// `PAD` / `LINE_GAP` so the internal spacing rhythm stays consistent.
+const ICON_GAP: i32 = 4;
 
 /// Default spacing between adjacent instances; overridable at runtime with
 /// `set_margin` (physical pixels).
@@ -1353,7 +1400,12 @@ fn measure(inst: &Inst) -> (i32, i32) {
             inst.top_bold,
             inst.top_face.as_deref(),
         );
-        w = w.max(tw + inst.pad_left + inst.pad_right);
+        // A line's content is one group: icon, gap, text. The icon is scaled
+        // to the line's cell height, so it never makes the window taller —
+        // only wider.
+        let iw = icon_width(inst.top_icon.as_ref(), th);
+        let content = iw + icon_gap(iw, &inst.top) + tw;
+        w = w.max(content + inst.pad_left + inst.pad_right);
         h = th;
     }
     if inst.bottom_visible {
@@ -1363,10 +1415,23 @@ fn measure(inst: &Inst) -> (i32, i32) {
             inst.bottom_bold,
             inst.bottom_face.as_deref(),
         );
-        w = w.max(bw + inst.pad_left + inst.pad_right);
+        let iw = icon_width(inst.bottom_icon.as_ref(), bh);
+        let content = iw + icon_gap(iw, &inst.bottom) + bw;
+        w = w.max(content + inst.pad_left + inst.pad_right);
         h = if inst.top_visible { h + LINE_GAP + bh } else { bh };
     }
     (w.max(1), h.max(1))
+}
+
+/// The gap between an icon and its text: `ICON_GAP` when there is both an icon
+/// and text to separate, `0` when either side is missing (an icon-only line
+/// should not carry trailing padding).
+fn icon_gap(icon_w: i32, text: &str) -> i32 {
+    if icon_w > 0 && !text.is_empty() {
+        ICON_GAP
+    } else {
+        0
+    }
 }
 
 fn measure_text(text: &str, size_px: i32, bold: bool, face: Option<&str>) -> (i32, i32) {
@@ -1699,6 +1764,26 @@ fn paint_inst(inst: &mut Inst) {
     let (tr, tg, tb) = resolve_color(&inst.top_color);
     let (br, bg, bb) = resolve_color(&inst.bottom_color);
 
+    // Rasterise the icons before building the bitmap: an icon's width is part
+    // of its line's group (icon + gap + text), which is what `align_x`
+    // positions — so the group has to be known up front.
+    let top_icon = if inst.top_visible {
+        icon_raster(
+            inst.top_icon.as_ref(),
+            top.as_ref().map_or(0, |(_, th, _)| *th),
+        )
+    } else {
+        None
+    };
+    let bot_icon = if inst.bottom_visible {
+        icon_raster(
+            inst.bottom_icon.as_ref(),
+            bot.as_ref().map_or(0, |(_, bh, _)| *bh),
+        )
+    } else {
+        None
+    };
+
     let hdc = unsafe { CreateCompatibleDC(0) };
     let (hbmp, bits) = create_dib(hdc, w, h);
     let old = unsafe { SelectObject(hdc, hbmp) };
@@ -1710,20 +1795,47 @@ fn paint_inst(inst: &mut Inst) {
     // settings popup anywhere on the item (not just exactly on a glyph).
     // TrafficMonitor's D2D path fills the same alpha=1 background
     // (`FillRect(draw_rect, 0x00000000, 1)`).
-    for i in 0..(w * h) as usize {
-        unsafe { bits_u32.add(i).write(0x0100_0000) };
+    let dst: &mut [u32] = unsafe { std::slice::from_raw_parts_mut(bits_u32, (w * h) as usize) };
+    for px in dst.iter_mut() {
+        *px = pixels::BACKDROP;
     }
 
     // Top band, anchored at y=0. When the bottom line is hidden too, this is
     // the only band and fills the single-line window.
     if let Some((tw, th, top_cov)) = &top {
-        let top_x = align_x(inst.top_align, *tw, w, inst.pad_left, inst.pad_right);
+        let (iw, gap) = match &top_icon {
+            Some(icon) => (icon.w as i32, icon_gap(icon.w as i32, &inst.top)),
+            None => (0, 0),
+        };
+        // The icon and the text move together: aligning the text alone would
+        // leave the icon stranded at the window edge when centred or
+        // right-aligned.
+        let group_x = align_x(inst.top_align, iw + gap + *tw, w, inst.pad_left, inst.pad_right);
+        if let Some(icon) = &top_icon {
+            let iy = ((*th - icon.h as i32) / 2).max(0) as usize;
+            let tint = if inst.top_icon.as_ref().is_some_and(|s| s.tint) {
+                Some((tr, tg, tb))
+            } else {
+                None
+            };
+            pixels::blit_icon(
+                dst,
+                w as usize,
+                h as usize,
+                group_x as usize,
+                iy,
+                icon.w,
+                icon.h,
+                &icon.rgba,
+                tint,
+            );
+        }
         blit_line(
-            bits_u32,
+            dst.as_mut_ptr(),
             w as usize,
             h as usize,
             0,
-            top_x as usize,
+            (group_x + iw + gap) as usize,
             *tw as usize,
             *th as usize,
             top_cov,
@@ -1740,13 +1852,42 @@ fn paint_inst(inst: &mut Inst) {
             Some((_, th, _)) => (*th + LINE_GAP) as usize,
             None => 0,
         };
-        let bot_x = align_x(inst.bottom_align, *bw, w, inst.pad_left, inst.pad_right);
+        let (iw, gap) = match &bot_icon {
+            Some(icon) => (icon.w as i32, icon_gap(icon.w as i32, &inst.bottom)),
+            None => (0, 0),
+        };
+        let group_x = align_x(
+            inst.bottom_align,
+            iw + gap + *bw,
+            w,
+            inst.pad_left,
+            inst.pad_right,
+        );
+        if let Some(icon) = &bot_icon {
+            let iy = ((*bh - icon.h as i32) / 2).max(0) as usize;
+            let tint = if inst.bottom_icon.as_ref().is_some_and(|s| s.tint) {
+                Some((br, bg, bb))
+            } else {
+                None
+            };
+            pixels::blit_icon(
+                dst,
+                w as usize,
+                h as usize,
+                group_x as usize,
+                bot_y + iy,
+                icon.w,
+                icon.h,
+                &icon.rgba,
+                tint,
+            );
+        }
         blit_line(
-            bits_u32,
+            dst.as_mut_ptr(),
             w as usize,
             h as usize,
             bot_y,
-            bot_x as usize,
+            (group_x + iw + gap) as usize,
             *bw as usize,
             *bh as usize,
             bot_cov,
@@ -1860,6 +2001,224 @@ fn blit_line(
                     .write((a as u32) << 24 | ab | (ag << 8) | (ar << 16));
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Icons (image files + SVG)
+//
+// An icon is decoded once into an `IconSource` and cached by its origin, then
+// rasterised at whatever height the line needs on every paint. Keeping the
+// cache at the *source* level (not the rasterised pixels) is what makes DPI
+// and font-size changes free: nothing has to be invalidated, the next paint
+// simply asks for a different height. Vector sources in particular stay sharp
+// at any scale.
+//
+// The compositing maths lives in `crate::pixels` so it can be unit tested off
+// Windows; see that module for the premultiplied-alpha contract.
+// ---------------------------------------------------------------------------
+
+/// Intrinsic size assumed for an SVG that declares neither `width`/`height`
+/// nor a `viewBox` — without it such a document has no usable aspect ratio.
+const ICON_FALLBACK_SIZE: f32 = 24.0;
+
+/// A decoded icon at its native size, shared by every instance that
+/// references the same asset.
+enum IconSource {
+    /// A parsed SVG. Rasterised on demand at the target height.
+    Vector(Arc<resvg::usvg::Tree>),
+    /// A bitmap (PNG / ICO / BMP) in straight (non-premultiplied) RGBA.
+    Raster(Arc<image::RgbaImage>),
+}
+
+/// An icon rasterised at the size it is about to be painted at.
+struct RasteredIcon {
+    w: usize,
+    h: usize,
+    /// Premultiplied RGBA, ready for `pixels::blit_icon`.
+    rgba: Vec<u8>,
+}
+
+static ICON_CACHE: OnceLock<Mutex<HashMap<String, Arc<IconSource>>>> = OnceLock::new();
+
+/// Cache key for a spec. `path` sources key on the path; `data` sources key on
+/// a hash of the content, because an inline SVG source is far too large (and
+/// too variable) to use as a map key directly.
+fn icon_key(spec: &IconSpec) -> Option<String> {
+    match (spec.path.as_deref(), spec.data.as_deref()) {
+        (Some(path), None) => Some(format!("p:{path}")),
+        (None, Some(data)) => {
+            let mut hasher = DefaultHasher::new();
+            data.hash(&mut hasher);
+            Some(format!("d:{:016x}", hasher.finish()))
+        }
+        _ => None,
+    }
+}
+
+/// Resolve (and cache) an icon's decoded source. Returns `None` when the asset
+/// is missing or undecodable — callers treat that as "no icon" rather than
+/// failing the whole command.
+fn icon_source(spec: &IconSpec) -> Option<Arc<IconSource>> {
+    let key = icon_key(spec)?;
+    let cache = ICON_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(hit) = cache.lock().ok()?.get(&key).cloned() {
+        return Some(hit);
+    }
+    let src = Arc::new(load_icon(spec)?);
+    if let Ok(mut cache) = cache.lock() {
+        cache.insert(key, Arc::clone(&src));
+    }
+    Some(src)
+}
+
+fn load_icon(spec: &IconSpec) -> Option<IconSource> {
+    match (spec.path.as_deref(), spec.data.as_deref()) {
+        (Some(path), None) => {
+            let bytes = std::fs::read(path).ok()?;
+            eprintln_on_fail(path, decode_raster(&bytes).or_else(|| decode_svg(&bytes)))
+        }
+        (None, Some(data)) => load_icon_data(data),
+        _ => None,
+    }
+}
+
+fn load_icon_data(data: &str) -> Option<IconSource> {
+    // Raw SVG / XML source — hand it straight to usvg.
+    if data.trim_start().starts_with('<') {
+        let tree = resvg::usvg::Tree::from_str(data, &resvg::usvg::Options::default()).ok()?;
+        return Some(IconSource::Vector(Arc::new(tree)));
+    }
+    let bytes = if let Some(rest) = data.strip_prefix("data:") {
+        match rest.split_once(',') {
+            Some((meta, body)) if meta.contains(";base64") => decode_base64(body),
+            // `data:image/svg+xml;utf8,<svg .../>` — the body is the document.
+            Some((_, body)) => Some(body.as_bytes().to_vec()),
+            None => None,
+        }
+    } else {
+        // Bare base64.
+        decode_base64(data)
+    }?;
+    decode_raster(&bytes).or_else(|| decode_svg(&bytes))
+}
+
+fn decode_base64(s: &str) -> Option<Vec<u8>> {
+    base64::engine::general_purpose::STANDARD
+        .decode(s.trim())
+        .ok()
+}
+
+fn decode_raster(bytes: &[u8]) -> Option<IconSource> {
+    let img = image::load_from_memory(bytes).ok()?;
+    Some(IconSource::Raster(Arc::new(img.to_rgba8())))
+}
+
+fn decode_svg(bytes: &[u8]) -> Option<IconSource> {
+    let tree = resvg::usvg::Tree::from_data(bytes, &resvg::usvg::Options::default()).ok()?;
+    Some(IconSource::Vector(Arc::new(tree)))
+}
+
+fn eprintln_on_fail(origin: &str, src: Option<IconSource>) -> Option<IconSource> {
+    if src.is_none() {
+        eprintln!("[multiline-taskband] could not decode icon: {origin}");
+    }
+    src
+}
+
+/// Intrinsic size of a source, used for layout without rasterising.
+fn icon_dims(src: &IconSource) -> (u32, u32) {
+    match src {
+        IconSource::Vector(tree) => {
+            let size = tree.size();
+            let w = if size.width() > 0.0 {
+                size.width()
+            } else {
+                ICON_FALLBACK_SIZE
+            };
+            let h = if size.height() > 0.0 {
+                size.height()
+            } else {
+                ICON_FALLBACK_SIZE
+            };
+            (w as u32, h as u32)
+        }
+        IconSource::Raster(img) => img.dimensions(),
+    }
+}
+
+/// Width the icon takes at `band_h` — what `measure` needs. `0` means "no
+/// icon", either because there is none or because it failed to load.
+fn icon_width(spec: Option<&IconSpec>, band_h: i32) -> i32 {
+    let Some(spec) = spec else { return 0 };
+    let Some(src) = icon_source(spec) else {
+        return 0;
+    };
+    let (sw, sh) = icon_dims(&src);
+    pixels::width_for_height(sw, sh, band_h) as i32
+}
+
+/// Rasterise the icon for `band_h` pixels of height, ready to composite.
+fn icon_raster(spec: Option<&IconSpec>, band_h: i32) -> Option<RasteredIcon> {
+    if band_h <= 0 {
+        return None;
+    }
+    let src = icon_source(spec?)?;
+    let (sw, sh) = icon_dims(&src);
+    let w = pixels::width_for_height(sw, sh, band_h);
+    if w == 0 {
+        return None;
+    }
+    match &*src {
+        IconSource::Vector(tree) => {
+            let (sw, sh) = (sw as f32, sh as f32);
+            let mut pix = resvg::tiny_skia::Pixmap::new(w, band_h as u32)?;
+            let ts = resvg::tiny_skia::Transform::from_scale(
+                w as f32 / sw,
+                band_h as f32 / sh,
+            );
+            resvg::render(tree, ts, &mut pix.as_mut());
+            Some(RasteredIcon {
+                w: w as usize,
+                h: band_h as usize,
+                // tiny-skia pixmaps are already premultiplied RGBA.
+                rgba: pix.take(),
+            })
+        }
+        IconSource::Raster(img) => {
+            let scaled = image::imageops::resize(
+                &**img,
+                w,
+                band_h as u32,
+                image::imageops::FilterType::Lanczos3,
+            );
+            Some(RasteredIcon {
+                w: w as usize,
+                h: band_h as usize,
+                rgba: pixels::to_premultiplied(&scaled),
+            })
+        }
+    }
+}
+
+/// Drop cached icons that no live instance references any more.
+fn prune_icon_cache() {
+    let (Some(cache), Some(instances)) = (ICON_CACHE.get(), INSTANCES.get()) else {
+        return;
+    };
+    let mut live = HashSet::new();
+    if let Ok(map) = instances.lock() {
+        for inst in map.values() {
+            if let Some(k) = inst.top_icon.as_ref().and_then(icon_key) {
+                live.insert(k);
+            }
+            if let Some(k) = inst.bottom_icon.as_ref().and_then(icon_key) {
+                live.insert(k);
+            }
+        }
+    }
+    if let Ok(mut c) = cache.lock() {
+        c.retain(|k, _| live.contains(k));
     }
 }
 
@@ -2092,6 +2451,8 @@ fn instance_state_json(id: &str) -> Option<serde_json::Value> {
         "bottomAlign": inst.bottom_align,
         "topVisible": inst.top_visible,
         "bottomVisible": inst.bottom_visible,
+        "topIcon": inst.top_icon,
+        "bottomIcon": inst.bottom_icon,
     }))
 }
 

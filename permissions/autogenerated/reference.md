@@ -18,6 +18,7 @@ Default permissions for the multiline-taskband plugin (core rendering + read-onl
 - `allow-set-alignment`
 - `allow-set-visible`
 - `allow-set-line-visible`
+- `allow-set-icon`
 - `allow-rect`
 - `allow-is-visible`
 - `allow-set-auto-popup`
@@ -365,6 +366,32 @@ Enables the set_font_sizes command without any pre-configured scope.
 <td>
 
 Denies the set_font_sizes command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:allow-set-icon`
+
+</td>
+<td>
+
+Enables the set_icon command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-set-icon`
+
+</td>
+<td>
+
+Denies the set_icon command without any pre-configured scope.
 
 </td>
 </tr>

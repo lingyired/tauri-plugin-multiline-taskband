@@ -102,6 +102,20 @@
               </button>
             </div>
           </div>
+          <div class="icon-row">
+            <input type="text" id="popup-top-icon-path" class="family-input"
+                   placeholder="Icon file · .svg / .png / .ico" autocomplete="off" spellcheck="false"
+                   aria-label="Top line icon file path" />
+            <textarea id="popup-top-icon-data" class="icon-data" rows="2" spellcheck="false"
+                      placeholder="or inline SVG / base64 / data URL" aria-label="Top line inline icon"></textarea>
+            <label class="bold-label" title="Paint the icon with this line's colour — its alpha becomes coverage, so a monochrome icon follows the theme">
+              <span class="switch sm">
+                <input type="checkbox" id="popup-top-icon-tint" />
+                <span class="slider"></span>
+              </span>
+              Tint
+            </label>
+          </div>
         </section>
 
         <section class="line-sec" aria-label="Bottom line">
@@ -158,6 +172,20 @@
                 </svg>
               </button>
             </div>
+          </div>
+          <div class="icon-row">
+            <input type="text" id="popup-bottom-icon-path" class="family-input"
+                   placeholder="Icon file · .svg / .png / .ico" autocomplete="off" spellcheck="false"
+                   aria-label="Bottom line icon file path" />
+            <textarea id="popup-bottom-icon-data" class="icon-data" rows="2" spellcheck="false"
+                      placeholder="or inline SVG / base64 / data URL" aria-label="Bottom line inline icon"></textarea>
+            <label class="bold-label" title="Paint the icon with this line's colour — its alpha becomes coverage, so a monochrome icon follows the theme">
+              <span class="switch sm">
+                <input type="checkbox" id="popup-bottom-icon-tint" />
+                <span class="slider"></span>
+              </span>
+              Tint
+            </label>
           </div>
         </section>
 

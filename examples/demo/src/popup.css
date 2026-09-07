@@ -195,6 +195,47 @@ body {
   font-size: 12.5px;
 }
 
+/* Icon: a file path OR inline content (mutually exclusive), plus a tint
+   switch that repaints a monochrome icon in the line's own colour. */
+.icon-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 3px;
+  border-top: 1px dashed var(--stroke);
+}
+
+.icon-data {
+  width: 100%;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--surface-solid);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 6px 10px;
+  resize: vertical;
+  outline: none;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  .icon-data {
+    background: var(--surface-2);
+  }
+}
+
+.icon-data:focus {
+  border-color: var(--stroke-strong);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.icon-data::placeholder {
+  color: var(--ink-3);
+}
+
 .color-custom {
   display: flex;
   align-items: center;

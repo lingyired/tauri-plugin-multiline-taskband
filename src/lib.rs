@@ -9,6 +9,11 @@ mod commands;
 mod desktop;
 mod error;
 mod models;
+/// Platform-independent pixel compositing. Kept out of `native` so it can be
+/// unit tested on any platform — which means, off Windows, its only callers
+/// are the tests.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+mod pixels;
 #[cfg(target_os = "windows")]
 mod native;
 
@@ -47,6 +52,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::set_alignment,
             commands::set_visible,
             commands::set_line_visible,
+            commands::set_icon,
             commands::rect,
             commands::is_visible,
             commands::set_popup_window,
