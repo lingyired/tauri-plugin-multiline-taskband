@@ -226,6 +226,62 @@ pub struct SetLineVisibleRequest {
     pub bottom: bool,
 }
 
+/// A leading icon for one taskbar line, rendered from an image file or from
+/// inline content.
+///
+/// The icon is drawn at the start of the line, before the text, and is scaled
+/// to the line's full cell height — so it follows both the font size and the
+/// system DPI. The width follows the source's aspect ratio.
+///
+/// Exactly one of `path` / `data` must be provided; see [`IconSpec::is_valid`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IconSpec {
+    /// Path to an image file. SVG is rasterised with `resvg`; PNG / ICO / BMP
+    /// go through the `image` crate. Mutually exclusive with `data`.
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Inline content: SVG source text, a base64 string, or a
+    /// `data:<mime>;base64,<payload>` URL. Mutually exclusive with `path`.
+    #[serde(default)]
+    pub data: Option<String>,
+    /// Paint the icon with the line's own colour instead of its own colours.
+    ///
+    /// The icon's alpha becomes coverage — exactly what glyph coverage is for
+    /// text — so a monochrome icon follows `set_colors` and the taskbar's
+    /// light/dark theme instead of being stuck at whatever colour the asset
+    /// was authored with.
+    #[serde(default)]
+    pub tint: bool,
+}
+
+impl IconSpec {
+    /// `path` and `data` are mutually exclusive: exactly one must be `Some`.
+    pub fn is_valid(&self) -> bool {
+        matches!(
+            (self.path.as_deref(), self.data.as_deref()),
+            (Some(_), None) | (None, Some(_))
+        )
+    }
+}
+
+/// Per-line leading icon.
+///
+/// Each line is independent, mirroring `set_font_family` / `set_colors` /
+/// `set_alignment`: `None` clears that line's icon and leaves the other one
+/// untouched.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetIconRequest {
+    pub id: String,
+    /// Icon for the top line; `None` clears it.
+    #[serde(default)]
+    pub top: Option<IconSpec>,
+    /// Icon for the bottom line; `None` clears it.
+    #[serde(default)]
+    pub bottom: Option<IconSpec>,
+}
+
 /// Select which Tauri webview window is used as the settings popup.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

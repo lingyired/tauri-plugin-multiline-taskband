@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- Monochrome silhouette: enable "Tint" in the popup so it is painted
+       with the line's own colour (alpha becomes coverage). -->
+  <path fill="#222222" d="M13 2L4.5 13.5H11L9.5 22 19 10h-6.5z"/>
+</svg>

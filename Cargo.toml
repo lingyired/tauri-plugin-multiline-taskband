@@ -26,6 +26,18 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_WindowsProgramming",
     "Win32_System_Registry",
 ] }
+# Icon rendering. These are Windows-only because nothing outside
+# `native::windows` paints pixels.
+#
+# `resvg` is deliberately built without default features: icons need neither
+# <text> rendering (which pulls fontdb + ttf-parser + the system font stack)
+# nor embedded raster images (jpeg/gif/webp codecs) nor SVGZ.
+resvg = { version = "0.48", default-features = false }
+# PNG / ICO / BMP sources. Also without default features — no encoders, no
+# formats an icon would never ship in.
+image = { version = "0.25", default-features = false, features = ["png", "ico", "bmp"] }
+# Decoding inline `data:...;base64,` payloads.
+base64 = "0.22"
 
 [build-dependencies]
 tauri-plugin = { version = "2", features = ["build"] }

@@ -231,6 +231,25 @@ impl<R: Runtime> MultilineTaskband<R> {
         }
     }
 
+    /// Set the leading icon of the top/bottom line. `None` clears that line's
+    /// icon; the other line is untouched. See [`IconSpec`].
+    pub fn set_icon(
+        &self,
+        id: String,
+        top: Option<IconSpec>,
+        bottom: Option<IconSpec>,
+    ) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_icon(id, top, bottom)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (id, top, bottom);
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
     pub fn rect(&self, id: String) -> crate::Result<Rect> {
         #[cfg(target_os = "windows")]
         {

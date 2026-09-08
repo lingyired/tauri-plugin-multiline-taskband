@@ -122,13 +122,27 @@ body {
   gap: 2px;
 }
 
+/* A preview row = leading icon + text as one flex group; justify-content is
+   driven by renderPreview() from the line's alignment so the icon rides along
+   with the text, exactly like the real item (icon + text align together). */
 .sim-line {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
   line-height: 1.2;
+}
+
+.sim-icon {
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.sim-text {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: left;
 }
 
 /* --- line sections ------------------------------------------------------------ */
@@ -193,6 +207,36 @@ body {
 
 .family-input {
   font-size: 12.5px;
+}
+
+/* Icon: a preset picker (built-in SVGs only, see iconPresets.js) plus a tint
+   switch that repaints a monochrome icon in the line's own colour. */
+.icon-row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 3px;
+  border-top: 1px dashed var(--stroke);
+}
+
+.icon-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.icon-select {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+.icon-preview {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 
 .color-custom {

@@ -36,8 +36,14 @@
           <div class="taskbar-sim" aria-hidden="true">
             <span class="sim-start"></span>
             <div class="sim-chip" id="sim-chip">
-              <span class="sim-line" id="sim-top">&nbsp;</span>
-              <span class="sim-line" id="sim-bottom">&nbsp;</span>
+              <div class="sim-line" id="sim-top">
+                <img class="sim-icon" id="sim-top-icon" alt="" hidden />
+                <span class="sim-text" id="sim-top-text">&nbsp;</span>
+              </div>
+              <div class="sim-line" id="sim-bottom">
+                <img class="sim-icon" id="sim-bottom-icon" alt="" hidden />
+                <span class="sim-text" id="sim-bottom-text">&nbsp;</span>
+              </div>
             </div>
             <span class="sim-clock">09:41</span>
           </div>
@@ -102,6 +108,21 @@
               </button>
             </div>
           </div>
+          <div class="icon-row">
+            <div class="icon-pick">
+              <select id="popup-top-icon-preset" class="icon-select" aria-label="Top line icon">
+                <option value="">No icon</option>
+              </select>
+              <img id="popup-top-icon-preview" class="icon-preview" alt="" hidden />
+            </div>
+            <label class="bold-label" title="Paint the icon with this line's colour — its alpha becomes coverage, so a monochrome icon follows the theme">
+              <span class="switch sm">
+                <input type="checkbox" id="popup-top-icon-tint" />
+                <span class="slider"></span>
+              </span>
+              Tint
+            </label>
+          </div>
         </section>
 
         <section class="line-sec" aria-label="Bottom line">
@@ -158,6 +179,21 @@
                 </svg>
               </button>
             </div>
+          </div>
+          <div class="icon-row">
+            <div class="icon-pick">
+              <select id="popup-bottom-icon-preset" class="icon-select" aria-label="Bottom line icon">
+                <option value="">No icon</option>
+              </select>
+              <img id="popup-bottom-icon-preview" class="icon-preview" alt="" hidden />
+            </div>
+            <label class="bold-label" title="Paint the icon with this line's colour — its alpha becomes coverage, so a monochrome icon follows the theme">
+              <span class="switch sm">
+                <input type="checkbox" id="popup-bottom-icon-tint" />
+                <span class="slider"></span>
+              </span>
+              Tint
+            </label>
           </div>
         </section>
 

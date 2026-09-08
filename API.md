@@ -80,6 +80,7 @@ All functions are async and return a `Promise`.
 | `setFontSizes` | `setFontSizes(options: FontSizesOptions): Promise<void>` | Per-line font size in points (`top` / `bottom`, independent). Both lines default to `9` (TrafficMonitor's taskbar default). |
 | `setFontFamily` | `setFontFamily(options: SetFontFamilyOptions): Promise<void>` | Per-line font family. Pass `null` (or `''`) for a line to reset it to the system default font. Unknown family names fall back silently — same semantics as the menubar plugin. |
 | `setColors` | `setColors(options: SetColorsOptions): Promise<void>` | Per-line text paint. Each line takes a [ColorStyle](#colorstyle): `default` follows the system colour (tracks light/dark mode), `solid` is a `#rrggbb` value. |
+| `setIcon` | `setIcon(options: SetIconOptions): Promise<void>` | Per-line leading icon in front of the text. Each line takes an [IconSpec](#iconspec--seticonoptions) (`null` clears that line). Icons are sized to the line's text height, decoded and cached by origin, and missing/undecodable assets silently render as no icon. |
 | `setBold` | `setBold(options: SetBoldOptions): Promise<void>` | Force the top and/or bottom line bold (`true` = bold, `false` = normal weight; each line independent). |
 | `setAlignment` | `setAlignment(options: SetAlignmentOptions): Promise<void>` | Per-line horizontal alignment: `0` left (default), `1` center, `2` right. See [SetAlignmentOptions](#setalignmentoptions--alignment). |
 
@@ -181,6 +182,18 @@ export type ColorStyle = { type: 'default' } | { type: 'solid'; value: string }
 
 export interface SetColorsOptions { id: string; top: ColorStyle; bottom: ColorStyle }
 
+export interface SetIconOptions {
+  id: string
+  top?: IconSpec | null
+  bottom?: IconSpec | null
+}
+
+export interface IconSpec {
+  path?: string
+  data?: string
+  tint?: boolean
+}
+
 export interface SetBoldOptions { id: string; top: boolean; bottom: boolean }
 
 export interface SetAlignmentOptions { id: string; top: number; bottom: number }
@@ -265,6 +278,30 @@ await setLineVisible({ id: 'group-a', top: true, bottom: false })
 await setLineVisible({ id: 'group-a', top: false, bottom: false })
 ```
 
+### IconSpec & SetIconOptions
+
+A leading icon drawn in front of a line's text. Each line is independent — `top: null` clears the top icon and leaves the bottom one alone, mirroring `setFontFamily` / `setColors`.
+
+```js
+// Monochrome SVG file, tinted to follow the line's colour:
+await setIcon({ id: 'group-a', top: { path: 'C:\\icons\\trend.svg', tint: true }, bottom: null })
+
+// Inline SVG source (no file on disk) — data is also accepted as plain base64
+// or as a `data:<mime>;base64,<payload>` URL:
+await setIcon({ id: 'group-a', top: null, bottom: { data: '<svg …>…</svg>' } })
+
+// Clear both lines:
+await setIcon({ id: 'group-a', top: null, bottom: null })
+```
+
+- **`path` vs `data` are mutually exclusive** — exactly one must be set; the plugin rejects a spec that sets neither or both.
+- **Formats**: SVG is rasterised to the line's pixel height with `resvg` (self-contained shapes; external `image`/`text` references are not followed). PNG / ICO / BMP decode via the `image` crate and are down-scaled from their native size — provide at least 2× for HiDPI. ICO files with multiple sizes use the entry closest to the target height.
+- **Sizing**: the icon height equals that line's full text cell height (so it tracks font size and DPI); the width keeps the source aspect ratio. A fixed `ICON_GAP` (4 px) separates it from the text. The icon and its text align as one group — `setAlignment` moves both together.
+- **`tint: true`** paints the icon with the line's own colour: the icon's alpha becomes coverage, exactly like glyph coverage for text. This is how a monochrome icon follows `setColors` and the taskbar's light/dark theme. With `tint: false` (default) the icon keeps the asset's own colours (full colour compositing, premultiplied alpha).
+- **Where the tint colour comes from** — the line colour set by `setColors`: `default` is the taskbar's system text colour, `solid` is your own hex. With a `default` line colour the plugin already repaints every instance when the system light/dark theme flips (a 500 ms watcher on `SystemUsesLightTheme`; `GetSysColor(COLOR_BTNTEXT)` is unreliable on Win11), so a tinted icon tracks the taskbar theme with zero host code — the Windows equivalent of a macOS template image. With a `solid` line colour the icon shares that business colour (e.g. red for a gain, green for a loss).
+- **Tintable assets**: `tint: true` discards the asset's colours entirely — only the alpha distribution remains, per-pixel, as coverage. Feed it monochrome silhouettes or line art (the fill colour is irrelevant); translucency paints at partial concentration. Coloured or gradient artwork is flattened to a single-colour shape, so keep `tint` off for brand-coloured icons. The demo ships 15 built-in presets (`examples/demo/src/icons/*.svg`, embedded in `src/iconPresets.js`) picked from the popup's dropdown and delivered through the `data` channel — no file path needed.
+- **Failure semantics**: a missing file or undecodable content is logged and renders as no icon; the command does not reject. Decoded assets are cached by origin (`path` string, or a content hash of `data`), so several instances can share one asset without re-decoding; the cache is pruned when the last referencing instance disappears.
+
 ### MenuItemDescriptor
 
 A right-click context-menu item descriptor. Mirrors the menubar plugin's type one-for-one, so the same menu tree works on both platforms:
@@ -319,6 +356,8 @@ interface InstanceState {
   bottomAlign: number
   topVisible: boolean
   bottomVisible: boolean
+  topIcon: IconSpec | null
+  bottomIcon: IconSpec | null
 }
 ```
 
@@ -341,6 +380,7 @@ All guest-js functions are thin wrappers over these. Payloads are wrapped in a s
 | `plugin:multiline-taskband\|set_margin` | `{ margin }` |
 | `plugin:multiline-taskband\|set_edge_margins` | `{ left?, right? }` |
 | `plugin:multiline-taskband\|set_colors` | `{ id, top: ColorStyle, bottom: ColorStyle }` |
+| `plugin:multiline-taskband\|set_icon` | `{ id, top?: IconSpec \| null, bottom?: IconSpec \| null }` |
 | `plugin:multiline-taskband\|set_bold` | `{ id, top, bottom }` |
 | `plugin:multiline-taskband\|set_alignment` | `{ id, top, bottom }` |
 | `plugin:multiline-taskband\|set_visible` | `{ id, visible }` |
@@ -380,6 +420,7 @@ app.multiline_taskband().set_text("group-a".into(), "A股".into(), "+1.23%".into
 | `set_margin(margin)` | `set_margin` |
 | `set_edge_margins(left: Option<i32>, right: Option<i32>)` | `set_edge_margins` |
 | `set_colors(id, top, bottom)` | `set_colors` |
+| `set_icon(id, top: Option<IconSpec>, bottom: Option<IconSpec>)` | `set_icon` |
 | `set_bold(id, top, bottom)` | `set_bold` |
 | `set_alignment(id, top, bottom)` | `set_alignment` |
 | `set_visible(id, visible)` | `set_visible` |
@@ -399,7 +440,7 @@ All methods return `crate::Result<T>` (`tauri_plugin_multiline_taskband::Result`
 
 The default permission set (`multiline-taskband:default`) covers core rendering + read-only queries:
 
-`allow-create`, `allow-set-text`, `allow-set-font-sizes`, `allow-set-font-family`, `allow-set-padding`, `allow-set-side`, `allow-set-order`, `allow-set-margin`, `allow-set-edge-margins`, `allow-set-colors`, `allow-set-bold`, `allow-set-alignment`, `allow-set-visible`, `allow-set-line-visible`, `allow-rect`, `allow-is-visible`, `allow-set-auto-popup`
+`allow-create`, `allow-set-text`, `allow-set-font-sizes`, `allow-set-font-family`, `allow-set-padding`, `allow-set-side`, `allow-set-order`, `allow-set-margin`, `allow-set-edge-margins`, `allow-set-colors`, `allow-set-icon`, `allow-set-bold`, `allow-set-alignment`, `allow-set-visible`, `allow-set-line-visible`, `allow-rect`, `allow-is-visible`, `allow-set-auto-popup`
 
 High-impact commands are intentionally **not** in the default set — grant them explicitly:
 

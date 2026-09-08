@@ -18,8 +18,9 @@ The approach is borrowed from [TrafficMonitor](https://github.com/zhongyang219/T
    - *Layered* + a 32-bit ARGB bitmap drawn via `UpdateLayeredWindow` → true per-pixel alpha (text visible, background fully transparent).
    - **Clickable**: a left click toggles the instance's **settings popup** (a Tauri webview window, see [Per-instance popup](#per-instance-popup)); a right click emits a `click` event the host can use for its own context menu. Only the label's own small rectangle is covered, so the rest of the taskbar keeps receiving clicks normally. **(important)** the bitmap's *background* is rendered as alpha `1`, not `0`: `UpdateLayeredWindow` hit-tests layered windows per-pixel, so any alpha-0 pixel would (click) fall through to the taskbar beneath. alpha 1 is visually indistinguishable from the taskbar but makes the entire label area hit-testable.
 4. Text is rendered with GDI `DrawTextW` into a **white-on-black** DIB; because white text on black makes every channel equal the coverage, the red channel doubles as the alpha mask — giving clean anti-aliased edges we can recolour to any target colour (system colour for `default`, or a `#rrggbb` for `solid`).
-5. A dedicated **UI thread** owns every window and runs a message pump. All public calls are marshalled to it through an `mpsc` channel + `PostThreadMessageW`, which keeps Win32 object creation on a single thread (required by the API) while Tauri command handlers run on arbitrary async threads.
-6. A `SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, …)` on the taskbar re-lays-out every instance when the taskbar moves/resizes (e.g. explorer restart, DPI change, monitor change).
+5. Each line may carry a **leading icon** in front of its text (see [API.md → IconSpec](API.md#iconspec--seticonoptions)): an SVG file/inline source is rasterised to the line's height with `resvg`; PNG/ICO/BMP go through the `image` crate. Icons are alpha-composited into the same premultiplied-ARGB bitmap, and with `tint: true` a monochrome icon is repainted in the line's own colour so it follows the taskbar theme.
+6. A dedicated **UI thread** owns every window and runs a message pump. All public calls are marshalled to it through an `mpsc` channel + `PostThreadMessageW`, which keeps Win32 object creation on a single thread (required by the API) while Tauri command handlers run on arbitrary async threads.
+7. A `SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, …)` on the taskbar re-lays-out every instance when the taskbar moves/resizes (e.g. explorer restart, DPI change, monitor change).
 
 This works identically on **Windows 10 and Windows 11** (both still expose `Shell_TrayWnd`, `Start` and `TrayNotifyWnd`).
 
@@ -35,6 +36,7 @@ tauri-plugin-multiline-taskband/
 │   ├── commands.rs               # Tauri command handlers
 │   ├── error.rs
 │   ├── desktop.rs                # shared state + MultilineTaskband struct
+│   ├── pixels.rs                 # cross-platform icon compositing (unit-tested on any host)
 │   └── native/
 │       └── windows.rs           # ← the Win32 implementation (cfg(windows) only)
 ├── guest-js/                     # JS/TS API (index.ts, package.json, rollup)
@@ -76,7 +78,7 @@ pnpm add ../tauri-plugin-multiline-taskband
 
 ```ts
 import {
-  create, setText, setColors, setFontSizes, setPadding, onReady,
+  create, setText, setColors, setFontSizes, setPadding, setIcon, onReady,
 } from 'tauri-plugin-multiline-taskband-api'
 
 // A "holding group" on the RIGHT edge, value emphasised via a larger font.
@@ -87,6 +89,9 @@ await setFontSizes({ id: 'group-a', top: 9, bottom: 11 })
 // Per-instance horizontal padding in physical pixels (default 4/4).
 await setPadding({ id: 'group-a', left: 6, right: 6 })
 await setColors({ id: 'group-a', top: { type: 'default' }, bottom: { type: 'solid', value: '#FF4F44' } })
+// A monochrome SVG icon in front of the name, tinted to follow the theme
+// (icons render at the line's own height; see API.md → IconSpec).
+await setIcon({ id: 'group-a', top: { path: 'C:\\icons\\wallet.svg', tint: true }, bottom: null })
 
 // Another group, deeper on the RIGHT edge (stacks leftward automatically).
 await create({ id: 'group-b', side: 'right', top: 'QDII', bottom: '-0.40%' })

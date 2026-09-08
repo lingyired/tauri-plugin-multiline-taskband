@@ -165,6 +165,44 @@ export interface SetLineVisibleOptions {
   bottom: boolean
 }
 
+/**
+ * A leading icon for one taskbar line.
+ *
+ * Exactly one of `path` / `data` must be set; the plugin rejects a spec that
+ * sets neither or both.
+ */
+export interface IconSpec {
+  /**
+   * Path to an image file. SVG is rasterised at the line's pixel height;
+   * PNG / ICO / BMP are scaled down from their native size (provide at least
+   * 2x for HiDPI).
+   */
+  path?: string
+  /**
+   * Inline content: SVG source text, a base64 string, or a
+   * `data:<mime>;base64,<payload>` URL.
+   */
+  data?: string
+  /**
+   * Paint the icon with the line's own colour instead of its own colours. The
+   * icon's alpha becomes coverage, exactly like glyph coverage for text, so a
+   * monochrome icon follows `setColors` and the taskbar's light/dark theme.
+   */
+  tint?: boolean
+}
+
+/**
+ * Per-line leading icon. Each line is independent: `null` clears that line's
+ * icon and leaves the other untouched.
+ */
+export interface SetIconOptions {
+  id: string
+  /** Icon for the top line, or `null` for none. */
+  top?: IconSpec | null
+  /** Icon for the bottom line, or `null` for none. */
+  bottom?: IconSpec | null
+}
+
 /** Select which Tauri webview window is used as the settings popup. */
 export interface PopupWindowOptions {
   /** Window label (as registered in `tauri.conf.json`). */
@@ -362,6 +400,20 @@ export async function setVisible(options: SetVisibleOptions): Promise<void> {
  */
 export async function setLineVisible(options: SetLineVisibleOptions): Promise<void> {
   return await invoke('plugin:multiline-taskband|set_line_visible', { payload: options })
+}
+
+/**
+ * Set the leading icon of the top/bottom lines.
+ *
+ * Each line is independent, mirroring `setFontFamily` / `setColors`:
+ * `top: null` clears the top icon and leaves the bottom one alone.
+ *
+ * Icons are decoded and cached by origin, so several instances can share one
+ * asset. A missing or undecodable asset is logged and simply renders as no
+ * icon — it does not reject.
+ */
+export async function setIcon(options: SetIconOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_icon', { payload: options })
 }
 
 /** Returns the on-screen rectangle of an instance in physical pixels. */
