@@ -202,7 +202,7 @@ function renderPreview() {
     if (l.shown && l.preset) {
       l.iconEl.hidden = false;
       l.iconEl.style.height = `${Math.round(sizePx * 1.2)}px`;
-      l.iconEl.src = iconDataUrl(l.preset.svg, l.tint ? ink : null);
+      l.iconEl.src = iconPreviewUrl(l.preset, l.tint ? ink : null);
     } else {
       l.iconEl.hidden = true;
       l.iconEl.removeAttribute("src");
@@ -222,15 +222,34 @@ function renderPreview() {
 }
 
 /**
- * Build a data: URL for a preset's SVG, optionally repainting every opaque
- * fill/stroke in `paint` — the browser-side stand-in for the plugin's tint.
+ * Build a data: URL for a preset, optionally repainting it in `paint` — the
+ * browser-side stand-in for the plugin's tint.
+ *
+ *   - SVG preset: rewrite every opaque `fill`/`stroke` to `paint` (alpha is
+ *     preserved by the original `fill` semantics; `none`/`transparent`
+ *     attributes are left alone).
+ *   - PNG preset with no tint: pass the data URL through unchanged.
+ *   - PNG preset with tint: wrap the data URL in an SVG `<mask>` so the
+ *     alpha channel becomes coverage and a coloured `<rect>` fills the
+ *     silhouette — the same visual effect the plugin paints on the taskbar.
  */
-function iconDataUrl(svg, paint) {
+function iconPreviewUrl(preset, paint) {
+  if (preset.kind === "png") {
+    if (!paint) return preset.png;
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">` +
+      `<mask id="m">` +
+      `<image href="${preset.png}" width="128" height="128" preserveAspectRatio="xMidYMid meet"/>` +
+      `</mask>` +
+      `<rect width="100%" height="100%" fill="${paint}" mask="url(#m)"/>` +
+      `</svg>`;
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  }
   const body = paint
-    ? svg.replace(/((?:fill|stroke)=")([^"]*)(")/gi, (m, pre, value, post) =>
+    ? preset.svg.replace(/((?:fill|stroke)=")([^"]*)(")/gi, (m, pre, value, post) =>
         /^(none|transparent)$/i.test(value.trim()) ? m : `${pre}${paint}${post}`,
       )
-    : svg;
+    : preset.svg;
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(body);
 }
 
@@ -312,29 +331,33 @@ const applyLineVisible = () => {
  * Build one line's `IconSpec` from the UI, or `null` for "no icon".
  *
  * The UI only exposes the built-in presets, so a selection always maps to a
- * preset whose SVG goes out on the `data` channel — no file path involved,
- * which keeps the demo working on any machine.
+ * preset whose content (SVG source or PNG data URL) goes out on the `data`
+ * channel — no file path involved, which keeps the demo working on any
+ * machine.
  */
 function readIcon(line) {
   const preset = presetById.get(els[`${line}IconPreset`].value);
   if (!preset) return null;
   const tint = els[`${line}IconTint`].checked;
-  return { data: preset.svg, tint };
+  // PNG presets are already a data URL; SVG presets hand the source through
+  // and let the plugin pick `data:image/svg+xml;utf8,...` at apply time.
+  return { data: preset.png ?? preset.svg, tint };
 }
 
 /**
  * Map a stored `IconSpec` back to a preset, or `null` when it does not match
  * one. Handles both shapes a saved spec can have: `{ data }` (equal to a
- * preset's SVG) and `{ path }` (legacy — file name matching the preset id).
+ * preset's SVG or PNG data URL) and `{ path }` (legacy — file name matching
+ * the preset id).
  */
 function presetForIcon(icon) {
   if (!icon) return null;
   if (icon.data) {
     const data = icon.data.trim();
-    return ICON_PRESETS.find((p) => p.svg === data) ?? null;
+    return ICON_PRESETS.find((p) => p.svg === data || p.png === data) ?? null;
   }
   if (icon.path) {
-    const stem = icon.path.split(/[\\/]/).pop().replace(/\.svg$/i, "").toLowerCase();
+    const stem = icon.path.split(/[\\/]/).pop().replace(/\.(svg|png|ico|bmp)$/i, "").toLowerCase();
     return presetById.get(stem) ?? null;
   }
   return null;
@@ -357,7 +380,7 @@ function updateIconPreview(line) {
   const img = els[`${line}IconPreview`];
   const preset = presetById.get(els[`${line}IconPreset`].value);
   if (preset) {
-    img.src = iconDataUrl(preset.svg, els[`${line}IconTint`].checked ? effectiveLineColor(line) : null);
+    img.src = iconPreviewUrl(preset, els[`${line}IconTint`].checked ? effectiveLineColor(line) : null);
     img.hidden = false;
   } else {
     img.removeAttribute("src");
@@ -575,6 +598,15 @@ window.addEventListener("DOMContentLoaded", () => {
     const preset = els[`${line}IconPreset`];
     const tint = els[`${line}IconTint`];
     preset.addEventListener("change", () => {
+      // Presets marked `tintRecommended: false` (multi-colour brand assets
+      // such as a logo PNG) look wrong in tint mode — the colour information
+      // is discarded, leaving a solid silhouette of the icon's outer shape.
+      // Default those to tint=off whenever they're picked; users can still
+      // toggle it back on manually.
+      const p = presetById.get(preset.value);
+      if (p && p.tintRecommended === false && tint.checked) {
+        tint.checked = false;
+      }
       applyIcons();
       updateIconPreview(line);
       renderPreview();
