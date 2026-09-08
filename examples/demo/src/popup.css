@@ -122,13 +122,27 @@ body {
   gap: 2px;
 }
 
+/* A preview row = leading icon + text as one flex group; justify-content is
+   driven by renderPreview() from the line's alignment so the icon rides along
+   with the text, exactly like the real item (icon + text align together). */
 .sim-line {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
   line-height: 1.2;
+}
+
+.sim-icon {
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.sim-text {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: left;
 }
 
 /* --- line sections ------------------------------------------------------------ */
@@ -195,7 +209,7 @@ body {
   font-size: 12.5px;
 }
 
-/* Icon: a file path OR inline content (mutually exclusive), plus a tint
+/* Icon: a preset picker (built-in SVGs only, see iconPresets.js) plus a tint
    switch that repaints a monochrome icon in the line's own colour. */
 .icon-row {
   display: flex;
@@ -205,35 +219,24 @@ body {
   border-top: 1px dashed var(--stroke);
 }
 
-.icon-data {
-  width: 100%;
-  font: inherit;
+.icon-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.icon-select {
+  flex: 1;
+  min-width: 0;
   font-size: 12.5px;
-  color: var(--ink);
-  background: var(--surface-solid);
-  border: 1px solid var(--stroke);
-  border-radius: 8px;
-  padding: 6px 10px;
-  resize: vertical;
-  outline: none;
-  transition:
-    border-color 0.12s ease,
-    box-shadow 0.12s ease;
 }
 
-@media (prefers-color-scheme: dark) {
-  .icon-data {
-    background: var(--surface-2);
-  }
-}
-
-.icon-data:focus {
-  border-color: var(--stroke-strong);
-  box-shadow: 0 0 0 3px var(--ring);
-}
-
-.icon-data::placeholder {
-  color: var(--ink-3);
+.icon-preview {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  object-fit: contain;
 }
 
 .color-custom {

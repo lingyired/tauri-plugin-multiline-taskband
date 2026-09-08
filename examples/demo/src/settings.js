@@ -74,7 +74,8 @@ export function instanceDefaults(id, side = "right") {
     bottomBold: false,
     topAlign: 0,
     bottomAlign: 0,
-    // Leading icons: `{ path, tint? }` or `{ data, tint? }`, else `null`.
+    // Leading icon: one of the built-in presets from iconPresets.js, stored as
+    // `{ data: <svg>, tint? }` (what `set_icon` consumes); `null` = no icon.
     topIcon: null,
     bottomIcon: null,
   };

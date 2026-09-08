@@ -12,6 +12,11 @@
 // padding) that follows the window's light / dark theme — the same theme the
 // plugin's "system default" color mode follows.
 import { saveInstanceState } from "./settings.js";
+import { ICON_PRESETS } from "./iconPresets.js";
+
+// Presets keyed by id for the icon dropdown; the dropdown itself is filled in
+// from ICON_PRESETS at startup (see popup.html for the static "No icon" entry).
+const presetById = new Map(ICON_PRESETS.map((p) => [p.id, p]));
 
 // Browser preview shim: opened as plain HTML (outside Tauri) the popup still
 // renders for layout work — plugin calls become logged no-ops and a fake
@@ -69,7 +74,9 @@ let currentState = null;
 const colorMode = { top: "default", bottom: "default" };
 const alignSel = { top: 0, bottom: 0 };
 
-const ALIGN_NAMES = ["left", "center", "right"];
+// Alignment maps straight onto flex justify-content for the preview rows
+// (each row is an icon + text group that moves as one unit).
+const ALIGN_JUSTIFY = ["flex-start", "center", "flex-end"];
 const HEX_RE = /^#?([0-9a-fA-F]{6})$/;
 
 function persistState() {
@@ -86,6 +93,10 @@ const els = {
   saved: $("pop-saved"),
   simTop: $("sim-top"),
   simBottom: $("sim-bottom"),
+  simTopIcon: $("sim-top-icon"),
+  simTopText: $("sim-top-text"),
+  simBottomIcon: $("sim-bottom-icon"),
+  simBottomText: $("sim-bottom-text"),
   simChip: $("sim-chip"),
   topDot: $("top-dot"),
   bottomDot: $("bottom-dot"),
@@ -97,11 +108,11 @@ const els = {
   bottomSizeVal: $("popup-bottom-size-value"),
   topFamily: $("popup-top-family"),
   bottomFamily: $("popup-bottom-family"),
-  topIconPath: $("popup-top-icon-path"),
-  topIconData: $("popup-top-icon-data"),
+  topIconPreset: $("popup-top-icon-preset"),
+  topIconPreview: $("popup-top-icon-preview"),
   topIconTint: $("popup-top-icon-tint"),
-  bottomIconPath: $("popup-bottom-icon-path"),
-  bottomIconData: $("popup-bottom-icon-data"),
+  bottomIconPreset: $("popup-bottom-icon-preset"),
+  bottomIconPreview: $("popup-bottom-icon-preview"),
   bottomIconTint: $("popup-bottom-icon-tint"),
   topSolidRow: $("popup-top-solid-row"),
   bottomSolidRow: $("popup-bottom-solid-row"),
@@ -139,9 +150,15 @@ function resolveColor(line) {
 }
 
 function renderPreview() {
+  // Resolve the taskbar ink once per paint — the CSS variable flips with the
+  // light/dark theme and tinted icons/`default` text must track it.
+  const tbInk =
+    getComputedStyle(document.documentElement).getPropertyValue("--tb-ink").trim() || "#1a1a1a";
   const lines = [
     {
       el: els.simTop,
+      textEl: els.simTopText,
+      iconEl: els.simTopIcon,
       dot: els.topDot,
       shown: els.topShown.checked,
       text: els.top.value,
@@ -151,9 +168,13 @@ function renderPreview() {
       solid: colorMode.top === "solid",
       color: resolveColor("top"),
       align: alignSel.top,
+      preset: presetById.get(els.topIconPreset.value) ?? null,
+      tint: els.topIconTint.checked,
     },
     {
       el: els.simBottom,
+      textEl: els.simBottomText,
+      iconEl: els.simBottomIcon,
       dot: els.bottomDot,
       shown: els.bottomShown.checked,
       text: els.bottom.value,
@@ -163,25 +184,54 @@ function renderPreview() {
       solid: colorMode.bottom === "solid",
       color: resolveColor("bottom"),
       align: alignSel.bottom,
+      preset: presetById.get(els.bottomIconPreset.value) ?? null,
+      tint: els.bottomIconTint.checked,
     },
   ];
   for (const l of lines) {
     // A hidden line vanishes from the strip — on the taskbar the instance
     // shrinks to the remaining line, which the strip shows naturally.
     l.el.style.display = l.shown ? "" : "none";
-    l.el.textContent = l.text || "\u00a0";
     // pt -> px at ~1.05, clamped so the preview strip keeps its shape
-    l.el.style.fontSize = `${Math.min(Math.max(Math.round(l.size * 1.05), 8), 17)}px`;
-    l.el.style.fontWeight = l.bold ? "700" : "400";
-    l.el.style.textAlign = ALIGN_NAMES[l.align] || "left";
-    l.el.style.fontFamily = l.family ? `'${l.family}'` : "";
-    l.el.style.color = l.solid ? l.color : "var(--tb-ink)";
-    l.dot.style.background = l.solid ? l.color : "var(--tb-ink)";
+    const sizePx = Math.min(Math.max(Math.round(l.size * 1.05), 8), 17);
+    // Line colour: `solid` wins, otherwise the taskbar ink (system colour).
+    const ink = l.solid ? l.color : tbInk;
+    // Leading icon (one group with the text): monochrome when Tint is on —
+    // every paint is repainted in the line colour, mirroring the plugin
+    // (alpha becomes coverage, pixels take the line colour).
+    if (l.shown && l.preset) {
+      l.iconEl.hidden = false;
+      l.iconEl.style.height = `${Math.round(sizePx * 1.2)}px`;
+      l.iconEl.src = iconDataUrl(l.preset.svg, l.tint ? ink : null);
+    } else {
+      l.iconEl.hidden = true;
+      l.iconEl.removeAttribute("src");
+    }
+    l.textEl.textContent = l.text || "\u00a0";
+    l.textEl.style.fontSize = `${sizePx}px`;
+    l.textEl.style.fontWeight = l.bold ? "700" : "400";
+    l.textEl.style.fontFamily = l.family ? `'${l.family}'` : "";
+    l.textEl.style.color = ink;
+    l.el.style.justifyContent = ALIGN_JUSTIFY[l.align] || "flex-start";
+    l.dot.style.background = ink;
     l.dot.style.opacity = l.shown ? "" : "0.3";
   }
   const left = Math.min(Math.max(parseInt(els.padLeft.value, 10) || 0, 0), 24);
   const right = Math.min(Math.max(parseInt(els.padRight.value, 10) || 0, 0), 24);
   els.simChip.style.padding = `3px ${right}px 3px ${left}px`;
+}
+
+/**
+ * Build a data: URL for a preset's SVG, optionally repainting every opaque
+ * fill/stroke in `paint` — the browser-side stand-in for the plugin's tint.
+ */
+function iconDataUrl(svg, paint) {
+  const body = paint
+    ? svg.replace(/((?:fill|stroke)=")([^"]*)(")/gi, (m, pre, value, post) =>
+        /^(none|transparent)$/i.test(value.trim()) ? m : `${pre}${paint}${post}`,
+      )
+    : svg;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(body);
 }
 
 // --- apply + saved flash ------------------------------------------------------
@@ -261,17 +311,58 @@ const applyLineVisible = () => {
 /**
  * Build one line's `IconSpec` from the UI, or `null` for "no icon".
  *
- * `path` and `data` are mutually exclusive — the plugin rejects a spec that
- * sets both — so a filled path wins and inline content is only used when the
- * path is empty.
+ * The UI only exposes the built-in presets, so a selection always maps to a
+ * preset whose SVG goes out on the `data` channel — no file path involved,
+ * which keeps the demo working on any machine.
  */
 function readIcon(line) {
-  const path = els[`${line}IconPath`].value.trim();
-  const data = els[`${line}IconData`].value.trim();
+  const preset = presetById.get(els[`${line}IconPreset`].value);
+  if (!preset) return null;
   const tint = els[`${line}IconTint`].checked;
-  if (path) return { path, tint };
-  if (data) return { data, tint };
+  return { data: preset.svg, tint };
+}
+
+/**
+ * Map a stored `IconSpec` back to a preset, or `null` when it does not match
+ * one. Handles both shapes a saved spec can have: `{ data }` (equal to a
+ * preset's SVG) and `{ path }` (legacy — file name matching the preset id).
+ */
+function presetForIcon(icon) {
+  if (!icon) return null;
+  if (icon.data) {
+    const data = icon.data.trim();
+    return ICON_PRESETS.find((p) => p.svg === data) ?? null;
+  }
+  if (icon.path) {
+    const stem = icon.path.split(/[\\/]/).pop().replace(/\.svg$/i, "").toLowerCase();
+    return presetById.get(stem) ?? null;
+  }
   return null;
+}
+
+/** The colour a line paints right now: solid custom hex, else taskbar ink. */
+function effectiveLineColor(line) {
+  if (colorMode[line] === "solid") {
+    const c = resolveColor(line);
+    if (/^#[0-9a-fA-F]{6}$/.test(c)) return c;
+  }
+  return (
+    getComputedStyle(document.documentElement).getPropertyValue("--tb-ink").trim() || "#1a1a1a"
+  );
+}
+
+/** Show the selected preset next to the dropdown — its raw colours, or when
+ *  Tint is on the single-colour version the taskbar will actually paint. */
+function updateIconPreview(line) {
+  const img = els[`${line}IconPreview`];
+  const preset = presetById.get(els[`${line}IconPreset`].value);
+  if (preset) {
+    img.src = iconDataUrl(preset.svg, els[`${line}IconTint`].checked ? effectiveLineColor(line) : null);
+    img.hidden = false;
+  } else {
+    img.removeAttribute("src");
+    img.hidden = true;
+  }
 }
 
 const applyIcons = () => {
@@ -339,13 +430,15 @@ function fill(p) {
     }
   }
 
-  // Per-line icons: absent/null = none. A spec carries either a `path` or
-  // `data` payload; prefill whichever side of the input pair is populated.
+  // Per-line icons: absent/null = none, otherwise the dropdown is set to the
+  // preset that matches the stored spec (by SVG content, or by file name for
+  // legacy `path` specs). A spec that matches nothing falls back to "No icon".
   for (const line of ["top", "bottom"]) {
     const icon = line === "top" ? p.topIcon : p.bottomIcon;
-    els[`${line}IconPath`].value = icon?.path || "";
-    els[`${line}IconData`].value = icon?.data || "";
+    const preset = presetForIcon(icon);
+    els[`${line}IconPreset`].value = preset ? preset.id : "";
     els[`${line}IconTint`].checked = !!icon?.tint;
+    updateIconPreview(line);
   }
 
   if (p.side === "left" || p.side === "right") {
@@ -463,15 +556,34 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Icons: applied on commit — path/data edits are typed, so applying on every
-  // keystroke would fire a rasterise per character. Tint is instant.
+  // Icon presets: populate the two dropdowns once at startup (static HTML only
+  // carries the leading "No icon" entry).
   for (const line of lineNames) {
-    const path = els[`${line}IconPath`];
-    const data = els[`${line}IconData`];
+    const select = els[`${line}IconPreset`];
+    for (const p of ICON_PRESETS) {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.name;
+      select.appendChild(opt);
+    }
+  }
+
+  // Icons: picking a preset is a commit (no typing involved), so apply right
+  // away, refresh the preview thumbnail, and sync the live taskbar strip.
+  // Tint changes the icon's paint in both the thumbnail and the strip.
+  for (const line of lineNames) {
+    const preset = els[`${line}IconPreset`];
     const tint = els[`${line}IconTint`];
-    path.addEventListener("change", applyIcons);
-    data.addEventListener("change", applyIcons);
-    tint.addEventListener("change", applyIcons);
+    preset.addEventListener("change", () => {
+      applyIcons();
+      updateIconPreview(line);
+      renderPreview();
+    });
+    tint.addEventListener("change", () => {
+      applyIcons();
+      updateIconPreview(line);
+      renderPreview();
+    });
   }
 
   // Alignment segmented buttons.
@@ -530,9 +642,9 @@ window.addEventListener("DOMContentLoaded", () => {
     els.bottomShown.checked = true;
     syncLineDim();
     for (const line of ["top", "bottom"]) {
-      els[`${line}IconPath`].value = "";
-      els[`${line}IconData`].value = "";
+      els[`${line}IconPreset`].value = "";
       els[`${line}IconTint`].checked = false;
+      updateIconPreview(line);
     }
     alignSel.top = 0;
     alignSel.bottom = 0;
