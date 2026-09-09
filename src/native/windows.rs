@@ -1910,9 +1910,13 @@ fn paint_inst(inst: &mut Inst) {
         *px = pixels::BACKDROP;
     }
 
-    // Leading column icon: drawn at the left content edge, vertically centred
-    // in the block (icon-only mode: centred in both axes). Tint follows the
-    // first visible line's colour — `top` when it shows, else `bottom`.
+    // Leading column icon: flush against the item's left edge (0pt inset,
+    // matching the macOS menubar plugin's spacing), vertically centred in the
+    // block (icon-only mode: centred in both axes). The text region starts at
+    // `lead_col` (= icon width + ICON_GAP), so the icon→text gap is ICON_GAP
+    // and the lines keep their own `pad_left` inside the remaining region.
+    // Tint follows the first visible line's colour — `top` when it shows,
+    // else `bottom`.
     if let Some(icon) = &lead_icon {
         let (lr, lg, lb) = if inst.top_visible { (tr, tg, tb) } else { (br, bg, bb) };
         let tint = if inst.leading_icon.as_ref().is_some_and(|s| s.tint) {
@@ -1921,7 +1925,7 @@ fn paint_inst(inst: &mut Inst) {
             None
         };
         let lx = if lead_col > 0 {
-            inst.pad_left
+            0
         } else {
             ((w - icon.w as i32) / 2).max(0)
         };
