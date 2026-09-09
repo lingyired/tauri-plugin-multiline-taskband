@@ -15,6 +15,7 @@ const COMMANDS: &[&str] = &[
     "set_visible",
     "set_line_visible",
     "set_icon",
+    "set_leading_icon",
     "rect",
     "is_visible",
     "set_popup_window",

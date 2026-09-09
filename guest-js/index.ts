@@ -189,6 +189,13 @@ export interface IconSpec {
    * monochrome icon follows `setColors` and the taskbar's light/dark theme.
    */
   tint?: boolean
+  /**
+   * Display height in physical pixels. Only used by the instance-level
+   * column icon (see {@link setLeadingIcon}); per-line icons ignore it and
+   * always scale to their line's cell height. Omit (or `null`) for the full
+   * block height; an explicit value is clamped to `8..=block height`.
+   */
+  size?: number | null
 }
 
 /**
@@ -201,6 +208,22 @@ export interface SetIconOptions {
   top?: IconSpec | null
   /** Icon for the bottom line, or `null` for none. */
   bottom?: IconSpec | null
+}
+
+/**
+ * The instance-level leading (column) icon. Mirrors the menubar plugin's
+ * `setLeadingIcon` one-for-one: one large icon in its own column on the left,
+ * vertically centred across the whole block, with both text lines starting to
+ * its right. Per-line icons keep working in the remaining text area.
+ */
+export interface SetLeadingIconOptions {
+  id: string
+  /**
+   * The column icon, or `null` to clear it (which returns the instance to the
+   * plain layout). Its `size` field is honoured here; omit it to span the
+   * full block height.
+   */
+  icon?: IconSpec | null
 }
 
 /** Select which Tauri webview window is used as the settings popup. */
@@ -414,6 +437,23 @@ export async function setLineVisible(options: SetLineVisibleOptions): Promise<vo
  */
 export async function setIcon(options: SetIconOptions): Promise<void> {
   return await invoke('plugin:multiline-taskband|set_icon', { payload: options })
+}
+
+/**
+ * Set the instance-level leading (column) icon: one large icon in its own
+ * column on the left of the instance, vertically centred across the whole
+ * block, with both text lines starting to its right.
+ *
+ * `icon: null` clears the column and returns the instance to the plain
+ * layout. The icon's `size` (physical pixels) is honoured here — omit it to
+ * span the full block height; an explicit value is clamped to
+ * `8..=block height`. Tint follows the first visible line's colour.
+ *
+ * With both lines hidden but a column icon set, the item survives and renders
+ * just the centred icon; clearing the icon hides it again.
+ */
+export async function setLeadingIcon(options: SetLeadingIconOptions): Promise<void> {
+  return await invoke('plugin:multiline-taskband|set_leading_icon', { payload: options })
 }
 
 /** Returns the on-screen rectangle of an instance in physical pixels. */

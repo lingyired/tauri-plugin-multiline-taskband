@@ -19,6 +19,7 @@ Default permissions for the multiline-taskband plugin (core rendering + read-onl
 - `allow-set-visible`
 - `allow-set-line-visible`
 - `allow-set-icon`
+- `allow-set-leading-icon`
 - `allow-rect`
 - `allow-is-visible`
 - `allow-set-auto-popup`
@@ -392,6 +393,32 @@ Enables the set_icon command without any pre-configured scope.
 <td>
 
 Denies the set_icon command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:allow-set-leading-icon`
+
+</td>
+<td>
+
+Enables the set_leading_icon command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`multiline-taskband:deny-set-leading-icon`
+
+</td>
+<td>
+
+Denies the set_leading_icon command without any pre-configured scope.
 
 </td>
 </tr>

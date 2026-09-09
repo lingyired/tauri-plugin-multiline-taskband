@@ -139,6 +139,7 @@ enum UiCommand {
         top: Option<IconSpec>,
         bottom: Option<IconSpec>,
     },
+    SetLeadingIcon { id: String, icon: Option<IconSpec> },
     Relayout,
 }
 
@@ -262,6 +263,11 @@ struct Inst {
     /// reference the same asset without decoding it twice.
     top_icon: Option<IconSpec>,
     bottom_icon: Option<IconSpec>,
+    /// Instance-level leading (column) icon (`None` = no column). Drawn in its
+    /// own column on the left, vertically centred across the whole block; both
+    /// text lines start to its right. Only the spec is stored — the decoded
+    /// pixels live in the shared `ICON_CACHE`.
+    leading_icon: Option<IconSpec>,
     /// True when the window has been embedded as a child of the taskbar
     /// (`SetParent`). Embedded children are painted in taskbar client
     /// coordinates and never need z-order maintenance.
@@ -302,18 +308,25 @@ impl Default for Inst {
             bottom_visible: true,
             top_icon: None,
             bottom_icon: None,
+            leading_icon: None,
             embedded: false,
         }
     }
 }
 
 /// Whether the instance should be on screen and reserve layout space at all:
-/// the instance-level switch AND at least one visible line. With both lines
-/// hidden the instance behaves exactly like a hidden one (window hidden, no
-/// slot in the layout) while `visible` itself keeps its value, so re-showing
-/// either line restores it without another `set_visible` call.
+/// the instance-level switch AND (at least one visible line OR a usable
+/// leading column icon). With both lines hidden but a leading icon set, the
+/// item survives rendering just the centred icon (mirrors the menubar
+/// plugin's v1.10.0 semantics); hiding is restored by clearing the icon.
 fn effective_visible(inst: &Inst) -> bool {
-    inst.visible && (inst.top_visible || inst.bottom_visible)
+    inst.visible
+        && (inst.top_visible
+            || inst.bottom_visible
+            || inst
+                .leading_icon
+                .as_ref()
+                .is_some_and(|s| icon_source(s).is_some()))
 }
 
 // ---------------------------------------------------------------------------
@@ -440,6 +453,16 @@ pub fn set_icon(
 ) -> crate::Result<()> {
     start_if_needed();
     post(UiCommand::SetIcon { id, top, bottom });
+    Ok(())
+}
+
+/// Instance-level leading (column) icon. `None` clears it. Validation of the
+/// spec (`path` XOR `data`) happens in `commands.rs`; a bad asset is not an
+/// error here — it is logged and the instance simply renders without the
+/// column (text flush left, as if no icon were set).
+pub fn set_leading_icon(id: String, icon: Option<IconSpec>) -> crate::Result<()> {
+    start_if_needed();
+    post(UiCommand::SetLeadingIcon { id, icon });
     Ok(())
 }
 
@@ -874,6 +897,23 @@ fn handle_command(cmd: UiCommand) {
             // to be re-measured and its neighbours re-spaced; a plain repaint
             // would leave the old (narrower) width in place.
             relayout_all();
+        }
+        UiCommand::SetLeadingIcon { id, icon } => {
+            let mut changed = false;
+            if let Some(inst) = guard.get_mut(&id) {
+                // Dedup: same spec (including `size`) re-sent = skip the
+                // re-measure entirely. A `size` change is part of the spec,
+                // so it naturally triggers the relayout that re-rasterises
+                // the column at the new height.
+                changed = inst.leading_icon != icon;
+                inst.leading_icon = icon;
+            }
+            drop(guard);
+            if changed {
+                // The column changes the instance's width (and, with both
+                // lines hidden, whether it renders at all) — full relayout.
+                relayout_all();
+            }
         }
         UiCommand::Relayout => {
             drop(guard);
@@ -1393,6 +1433,7 @@ fn measure(inst: &Inst) -> (i32, i32) {
     let d = dpi();
     let mut w = inst.pad_left + inst.pad_right;
     let mut h = 1;
+    let mut any_text = false;
     if inst.top_visible {
         let (tw, th) = measure_text(
             &inst.top,
@@ -1405,6 +1446,7 @@ fn measure(inst: &Inst) -> (i32, i32) {
         // only wider.
         let iw = icon_width(inst.top_icon.as_ref(), th);
         let content = iw + icon_gap(iw, &inst.top) + tw;
+        any_text = any_text || !inst.top.is_empty();
         w = w.max(content + inst.pad_left + inst.pad_right);
         h = th;
     }
@@ -1417,10 +1459,51 @@ fn measure(inst: &Inst) -> (i32, i32) {
         );
         let iw = icon_width(inst.bottom_icon.as_ref(), bh);
         let content = iw + icon_gap(iw, &inst.bottom) + bw;
+        any_text = any_text || !inst.bottom.is_empty();
         w = w.max(content + inst.pad_left + inst.pad_right);
         h = if inst.top_visible { h + LINE_GAP + bh } else { bh };
     }
+    // The leading (column) icon is measured last: its target height depends
+    // on the block height `h` the two lines just established (or on its own
+    // explicit `size`, clamped). It widens the instance without changing the
+    // line layout — the text region simply starts further right.
+    if let Some(spec) = inst.leading_icon.as_ref() {
+        if inst.top_visible || inst.bottom_visible {
+            let target = leading_target_h(spec, h);
+            let iw = icon_width(Some(spec), target);
+            if iw > 0 {
+                // Trailing gap only when there is text to separate from (an
+                // icon column beside empty lines would carry dead padding).
+                w += iw + if any_text { ICON_GAP } else { 0 };
+            }
+        } else {
+            // Icon-only mode: both lines hidden but the column icon keeps the
+            // item alive, rendering just the centred icon. Without an
+            // explicit `size` there is no block to derive a height from, so
+            // fall back to a fixed square-ish default.
+            let target = spec.size.map_or(ICON_ONLY_FALLBACK_SIZE, |s| s.max(8));
+            let iw = icon_width(Some(spec), target);
+            if iw > 0 {
+                w = w.max(iw + inst.pad_left + inst.pad_right);
+                h = target;
+            }
+        }
+    }
     (w.max(1), h.max(1))
+}
+
+/// Fallback height for the leading column icon when both lines are hidden and
+/// the spec carries no explicit `size` — there is no block height to inherit.
+const ICON_ONLY_FALLBACK_SIZE: i32 = 32;
+
+/// Display height of the leading column icon for a block of `block_h`
+/// physical pixels: an explicit `size` clamped into `8..=block_h`, or the
+/// full block height when unspecified.
+fn leading_target_h(spec: &IconSpec, block_h: i32) -> i32 {
+    match spec.size {
+        Some(s) => s.clamp(8, block_h.max(8)),
+        None => block_h,
+    }
 }
 
 /// The gap between an icon and its text: `ICON_GAP` when there is both an icon
@@ -1784,6 +1867,33 @@ fn paint_inst(inst: &mut Inst) {
         None
     };
 
+    // Leading (column) icon: rasterised at the block height (or its explicit
+    // clamped `size`), vertically centred across the whole instance. Its
+    // column width is part of every line's origin — the text region starts
+    // after it and the per-line alignment operates inside that remaining
+    // region. In icon-only mode (both lines hidden) the column carries no
+    // gap and the icon is centred in both axes instead.
+    let lines_visible = inst.top_visible || inst.bottom_visible;
+    let lead_icon = if inst.leading_icon.is_some() {
+        let target = if lines_visible {
+            leading_target_h(inst.leading_icon.as_ref().unwrap(), h)
+        } else {
+            inst.leading_icon
+                .as_ref()
+                .and_then(|s| s.size)
+                .map_or(ICON_ONLY_FALLBACK_SIZE, |s| s.max(8))
+        };
+        icon_raster(inst.leading_icon.as_ref(), target)
+    } else {
+        None
+    };
+    let any_text = (inst.top_visible && !inst.top.is_empty())
+        || (inst.bottom_visible && !inst.bottom.is_empty());
+    let lead_col = match &lead_icon {
+        Some(icon) if lines_visible => icon.w as i32 + if any_text { ICON_GAP } else { 0 },
+        _ => 0,
+    };
+
     let hdc = unsafe { CreateCompatibleDC(0) };
     let (hbmp, bits) = create_dib(hdc, w, h);
     let old = unsafe { SelectObject(hdc, hbmp) };
@@ -1800,6 +1910,39 @@ fn paint_inst(inst: &mut Inst) {
         *px = pixels::BACKDROP;
     }
 
+    // Leading column icon: flush against the item's left edge (0pt inset,
+    // matching the macOS menubar plugin's spacing), vertically centred in the
+    // block (icon-only mode: centred in both axes). The text region starts at
+    // `lead_col` (= icon width + ICON_GAP), so the icon→text gap is ICON_GAP
+    // and the lines keep their own `pad_left` inside the remaining region.
+    // Tint follows the first visible line's colour — `top` when it shows,
+    // else `bottom`.
+    if let Some(icon) = &lead_icon {
+        let (lr, lg, lb) = if inst.top_visible { (tr, tg, tb) } else { (br, bg, bb) };
+        let tint = if inst.leading_icon.as_ref().is_some_and(|s| s.tint) {
+            Some((lr, lg, lb))
+        } else {
+            None
+        };
+        let lx = if lead_col > 0 {
+            0
+        } else {
+            ((w - icon.w as i32) / 2).max(0)
+        };
+        let ly = ((h - icon.h as i32) / 2).max(0) as usize;
+        pixels::blit_icon(
+            dst,
+            w as usize,
+            h as usize,
+            lx as usize,
+            ly,
+            icon.w,
+            icon.h,
+            &icon.rgba,
+            tint,
+        );
+    }
+
     // Top band, anchored at y=0. When the bottom line is hidden too, this is
     // the only band and fills the single-line window.
     if let Some((tw, th, top_cov)) = &top {
@@ -1809,8 +1952,16 @@ fn paint_inst(inst: &mut Inst) {
         };
         // The icon and the text move together: aligning the text alone would
         // leave the icon stranded at the window edge when centred or
-        // right-aligned.
-        let group_x = align_x(inst.top_align, iw + gap + *tw, w, inst.pad_left, inst.pad_right);
+        // right-aligned. The leading column shifts the whole line right and
+        // the alignment works inside the remaining region.
+        let group_x = lead_col
+            + align_x(
+                inst.top_align,
+                iw + gap + *tw,
+                w - lead_col,
+                inst.pad_left,
+                inst.pad_right,
+            );
         if let Some(icon) = &top_icon {
             let iy = ((*th - icon.h as i32) / 2).max(0) as usize;
             let tint = if inst.top_icon.as_ref().is_some_and(|s| s.tint) {
@@ -1856,13 +2007,14 @@ fn paint_inst(inst: &mut Inst) {
             Some(icon) => (icon.w as i32, icon_gap(icon.w as i32, &inst.bottom)),
             None => (0, 0),
         };
-        let group_x = align_x(
-            inst.bottom_align,
-            iw + gap + *bw,
-            w,
-            inst.pad_left,
-            inst.pad_right,
-        );
+        let group_x = lead_col
+            + align_x(
+                inst.bottom_align,
+                iw + gap + *bw,
+                w - lead_col,
+                inst.pad_left,
+                inst.pad_right,
+            );
         if let Some(icon) = &bot_icon {
             let iy = ((*bh - icon.h as i32) / 2).max(0) as usize;
             let tint = if inst.bottom_icon.as_ref().is_some_and(|s| s.tint) {
@@ -2215,6 +2367,9 @@ fn prune_icon_cache() {
             if let Some(k) = inst.bottom_icon.as_ref().and_then(icon_key) {
                 live.insert(k);
             }
+            if let Some(k) = inst.leading_icon.as_ref().and_then(icon_key) {
+                live.insert(k);
+            }
         }
     }
     if let Ok(mut c) = cache.lock() {
@@ -2453,6 +2608,7 @@ fn instance_state_json(id: &str) -> Option<serde_json::Value> {
         "bottomVisible": inst.bottom_visible,
         "topIcon": inst.top_icon,
         "bottomIcon": inst.bottom_icon,
+        "leadingIcon": inst.leading_icon,
     }))
 }
 

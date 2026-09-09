@@ -36,13 +36,16 @@
           <div class="taskbar-sim" aria-hidden="true">
             <span class="sim-start"></span>
             <div class="sim-chip" id="sim-chip">
-              <div class="sim-line" id="sim-top">
-                <img class="sim-icon" id="sim-top-icon" alt="" hidden />
-                <span class="sim-text" id="sim-top-text">&nbsp;</span>
-              </div>
-              <div class="sim-line" id="sim-bottom">
-                <img class="sim-icon" id="sim-bottom-icon" alt="" hidden />
-                <span class="sim-text" id="sim-bottom-text">&nbsp;</span>
+              <img class="sim-lead" id="sim-leading-icon" alt="" hidden />
+              <div class="sim-lines">
+                <div class="sim-line" id="sim-top">
+                  <img class="sim-icon" id="sim-top-icon" alt="" hidden />
+                  <span class="sim-text" id="sim-top-text">&nbsp;</span>
+                </div>
+                <div class="sim-line" id="sim-bottom">
+                  <img class="sim-icon" id="sim-bottom-icon" alt="" hidden />
+                  <span class="sim-text" id="sim-bottom-text">&nbsp;</span>
+                </div>
               </div>
             </div>
             <span class="sim-clock">09:41</span>
@@ -194,6 +197,35 @@
               </span>
               Tint
             </label>
+          </div>
+        </section>
+
+        <section class="line-sec" aria-label="Leading column icon">
+          <span class="eyebrow">Leading icon</span>
+          <p class="hint">
+            One large icon in its own column on the left, centred across both
+            lines; the text starts to its right. 0 px height = span the whole
+            block.
+          </p>
+          <div class="icon-row">
+            <div class="icon-pick">
+              <select id="popup-leading-preset" class="icon-select" aria-label="Leading column icon">
+                <option value="">No icon</option>
+              </select>
+              <img id="popup-leading-preview" class="icon-preview" alt="" hidden />
+            </div>
+            <label class="bold-label" title="Paint the icon with the first visible line's colour — its alpha becomes coverage, so a monochrome icon follows the theme">
+              <span class="switch sm">
+                <input type="checkbox" id="popup-leading-tint" />
+                <span class="slider"></span>
+              </span>
+              Tint
+            </label>
+            <span class="num">
+              <input type="number" id="popup-leading-size" min="0" max="64" step="1" value="0"
+                     aria-label="Icon height in physical pixels; 0 = full block height" />
+              <span class="unit">px</span>
+            </span>
           </div>
         </section>
 

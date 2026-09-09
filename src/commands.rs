@@ -156,6 +156,25 @@ pub(crate) async fn set_icon<R: Runtime>(
         .set_icon(payload.id, payload.top, payload.bottom)
 }
 
+/// The instance-level leading (column) icon. `None` clears it.
+#[command]
+pub(crate) async fn set_leading_icon<R: Runtime>(
+    app: AppHandle<R>,
+    payload: SetLeadingIconRequest,
+) -> crate::Result<()> {
+    // Same spec validation as `set_icon`: a silently ignored icon is far
+    // harder to debug than an explicit error.
+    if let Some(icon) = &payload.icon {
+        if !icon.is_valid() {
+            return Err(crate::Error::InvalidArgument(
+                "icon must set exactly one of `path` or `data`".into(),
+            ));
+        }
+    }
+    app.multiline_taskband()
+        .set_leading_icon(payload.id, payload.icon)
+}
+
 #[command]
 pub(crate) async fn rect<R: Runtime>(
     app: AppHandle<R>,

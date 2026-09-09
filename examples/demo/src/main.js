@@ -367,6 +367,13 @@ async function applyAppearance(id) {
       })
     );
   }
+  if (s.leadingIcon) {
+    jobs.push(
+      invoke("plugin:multiline-taskband|set_leading_icon", {
+        payload: { id, icon: s.leadingIcon },
+      })
+    );
+  }
   await Promise.all(jobs).catch((err) => console.error(`applyAppearance ${id}:`, err));
 }
 

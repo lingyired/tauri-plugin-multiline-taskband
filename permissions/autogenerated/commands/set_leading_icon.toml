@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-leading-icon"
+description = "Enables the set_leading_icon command without any pre-configured scope."
+commands.allow = ["set_leading_icon"]
+
+[[permission]]
+identifier = "deny-set-leading-icon"
+description = "Denies the set_leading_icon command without any pre-configured scope."
+commands.deny = ["set_leading_icon"]

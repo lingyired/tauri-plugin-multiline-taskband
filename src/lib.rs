@@ -53,6 +53,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::set_visible,
             commands::set_line_visible,
             commands::set_icon,
+            commands::set_leading_icon,
             commands::rect,
             commands::is_visible,
             commands::set_popup_window,

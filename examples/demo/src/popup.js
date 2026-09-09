@@ -114,6 +114,11 @@ const els = {
   bottomIconPreset: $("popup-bottom-icon-preset"),
   bottomIconPreview: $("popup-bottom-icon-preview"),
   bottomIconTint: $("popup-bottom-icon-tint"),
+  leadingPreset: $("popup-leading-preset"),
+  leadingPreview: $("popup-leading-preview"),
+  leadingTint: $("popup-leading-tint"),
+  leadingSize: $("popup-leading-size"),
+  simLeading: $("sim-leading-icon"),
   topSolidRow: $("popup-top-solid-row"),
   bottomSolidRow: $("popup-bottom-solid-row"),
   topColor: $("popup-top-color"),
@@ -215,6 +220,29 @@ function renderPreview() {
     l.el.style.justifyContent = ALIGN_JUSTIFY[l.align] || "flex-start";
     l.dot.style.background = ink;
     l.dot.style.opacity = l.shown ? "" : "0.3";
+  }
+  // Leading column icon: spans the whole block (or an explicit clamped
+  // height), vertically centred — mirrors the plugin's column layout. Tint
+  // follows the first visible line's ink.
+  const leadPreset = presetById.get(els.leadingPreset.value) ?? null;
+  if (leadPreset) {
+    const shownLines = lines.filter((l) => l.shown);
+    const blockH = shownLines.length
+      ? shownLines.reduce(
+          (acc, l) => acc + Math.min(Math.max(Math.round(l.size * 1.05), 8), 17),
+          0,
+        ) + (shownLines.length - 1) * 3
+      : 17;
+    const leadSize = parseInt(els.leadingSize.value, 10) || 0;
+    const h = leadSize > 0 ? Math.min(Math.max(leadSize, 8), blockH) : blockH;
+    const first = shownLines[0] ?? lines[0];
+    const leadInk = first.solid ? first.color : tbInk;
+    els.simLeading.hidden = false;
+    els.simLeading.style.height = `${h}px`;
+    els.simLeading.src = iconDataUrl(leadPreset.svg, els.leadingTint.checked ? leadInk : null);
+  } else {
+    els.simLeading.hidden = true;
+    els.simLeading.removeAttribute("src");
   }
   const left = Math.min(Math.max(parseInt(els.padLeft.value, 10) || 0, 0), 24);
   const right = Math.min(Math.max(parseInt(els.padRight.value, 10) || 0, 0), 24);
@@ -388,10 +416,46 @@ function updateIconPreview(line) {
   }
 }
 
+/** Same thumbnail for the leading (column) icon; tint uses the first
+ *  visible line's colour, exactly like the plugin paints it. */
+function updateLeadingPreview() {
+  const img = els.leadingPreview;
+  const preset = presetById.get(els.leadingPreset.value);
+  if (preset) {
+    const line = els.topShown.checked ? "top" : "bottom";
+    img.src = iconDataUrl(preset.svg, els.leadingTint.checked ? effectiveLineColor(line) : null);
+    img.hidden = false;
+  } else {
+    img.removeAttribute("src");
+    img.hidden = true;
+  }
+}
+
 const applyIcons = () => {
   const top = readIcon("top");
   const bottom = readIcon("bottom");
   apply("set_icon", { top, bottom }, { topIcon: top, bottomIcon: bottom });
+};
+
+/**
+ * Build the leading (column) `IconSpec` from the UI, or `null` for "no icon".
+ * Same preset-only rule as the per-line icons; `size` in px, `0`/blank =
+ * full block height (omitted from the spec so the plugin default applies).
+ */
+function readLeadingIcon() {
+  const preset = presetById.get(els.leadingPreset.value);
+  if (!preset) return null;
+  const size = parseInt(els.leadingSize.value, 10) || 0;
+  return {
+    data: preset.svg,
+    tint: els.leadingTint.checked,
+    ...(size > 0 ? { size } : {}),
+  };
+}
+
+const applyLeadingIcon = () => {
+  const icon = readLeadingIcon();
+  apply("set_leading_icon", { icon }, { leadingIcon: icon });
 };
 
 // Dim a line section's edit controls while its "Show" switch is off.
@@ -464,6 +528,15 @@ function fill(p) {
     updateIconPreview(line);
   }
 
+  // Leading (column) icon: absent/null = none; size absent/0 = full block.
+  {
+    const preset = presetForIcon(p.leadingIcon);
+    els.leadingPreset.value = preset ? preset.id : "";
+    els.leadingTint.checked = !!p.leadingIcon?.tint;
+    els.leadingSize.value = p.leadingIcon?.size ?? 0;
+    updateLeadingPreview();
+  }
+
   if (p.side === "left" || p.side === "right") {
     setPressed(segGroups.side, p.side, "side");
     els.sideDot.dataset.side = p.side;
@@ -491,6 +564,7 @@ function fill(p) {
     bottomShown: els.bottomShown.checked,
     topIcon: p.topIcon ?? null,
     bottomIcon: p.bottomIcon ?? null,
+    leadingIcon: p.leadingIcon ?? null,
   };
   persistState();
   renderPreview();
@@ -579,10 +653,9 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Icon presets: populate the two dropdowns once at startup (static HTML only
-  // carries the leading "No icon" entry).
-  for (const line of lineNames) {
-    const select = els[`${line}IconPreset`];
+  // Icon presets: populate the three dropdowns once at startup (static HTML
+  // only carries the leading "No icon" entry).
+  for (const select of [els.topIconPreset, els.bottomIconPreset, els.leadingPreset]) {
     for (const p of ICON_PRESETS) {
       const opt = document.createElement("option");
       opt.value = p.id;
@@ -614,6 +687,16 @@ window.addEventListener("DOMContentLoaded", () => {
     tint.addEventListener("change", () => {
       applyIcons();
       updateIconPreview(line);
+      renderPreview();
+    });
+  }
+
+  // Leading (column) icon: any commit (preset pick, tint toggle, size) applies
+  // the whole spec at once and refreshes thumbnail + strip.
+  for (const el of [els.leadingPreset, els.leadingTint, els.leadingSize]) {
+    el.addEventListener("change", () => {
+      applyLeadingIcon();
+      updateLeadingPreview();
       renderPreview();
     });
   }
@@ -678,6 +761,10 @@ window.addEventListener("DOMContentLoaded", () => {
       els[`${line}IconTint`].checked = false;
       updateIconPreview(line);
     }
+    els.leadingPreset.value = "";
+    els.leadingTint.checked = false;
+    els.leadingSize.value = 0;
+    updateLeadingPreview();
     alignSel.top = 0;
     alignSel.bottom = 0;
     setPressed(segGroups["align-top"], 0, "align");
@@ -702,6 +789,9 @@ window.addEventListener("DOMContentLoaded", () => {
       invoke("plugin:multiline-taskband|set_icon", {
         payload: { id, top: null, bottom: null },
       }),
+      invoke("plugin:multiline-taskband|set_leading_icon", {
+        payload: { id, icon: null },
+      }),
     ])
       .then(() => {
         Object.assign(currentState, {
@@ -723,6 +813,7 @@ window.addEventListener("DOMContentLoaded", () => {
           bottomShown: true,
           topIcon: null,
           bottomIcon: null,
+          leadingIcon: null,
         });
         persistState();
         flashSaved(true);
