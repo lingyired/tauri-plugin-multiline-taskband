@@ -22,7 +22,7 @@
 // Instance: { shown, topShown, bottomShown, side, top, bottom, topSize,
 //             bottomSize, topFontFamily, bottomFontFamily, leftPadding,
 //             rightPadding, topColor, bottomColor, topBold, bottomBold,
-//             topAlign, bottomAlign, topIcon, bottomIcon }
+//             topAlign, bottomAlign, topIcon, bottomIcon, leadingIcon }
 // `shown` hides the whole instance; `topShown`/`bottomShown` hide individual
 // lines (both false = the instance renders nothing, like shown === false).
 //
@@ -78,6 +78,9 @@ export function instanceDefaults(id, side = "right") {
     // `{ data: <svg>, tint? }` (what `set_icon` consumes); `null` = no icon.
     topIcon: null,
     bottomIcon: null,
+    // Instance-level column icon (`set_leading_icon`): `{ data, tint?, size? }`
+    // or `null`. The column sits left of both lines, vertically centred.
+    leadingIcon: null,
   };
 }
 

@@ -234,7 +234,7 @@ pub struct SetLineVisibleRequest {
 /// system DPI. The width follows the source's aspect ratio.
 ///
 /// Exactly one of `path` / `data` must be provided; see [`IconSpec::is_valid`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IconSpec {
     /// Path to an image file. SVG is rasterised with `resvg`; PNG / ICO / BMP
@@ -253,6 +253,13 @@ pub struct IconSpec {
     /// was authored with.
     #[serde(default)]
     pub tint: bool,
+    /// Display height in physical pixels. Only used by the instance-level
+    /// column icon ([`SetLeadingIconRequest`]); per-line icons ignore it and
+    /// always scale to their line's cell height. `None` = the full block
+    /// height (the icon spans the whole two-line instance); an explicit value
+    /// is clamped to `8 ..= block height`.
+    #[serde(default)]
+    pub size: Option<i32>,
 }
 
 impl IconSpec {
@@ -280,6 +287,24 @@ pub struct SetIconRequest {
     /// Icon for the bottom line; `None` clears it.
     #[serde(default)]
     pub bottom: Option<IconSpec>,
+}
+
+/// The instance-level leading (column) icon — mirrors the menubar plugin's
+/// `setLeadingIcon` one-for-one.
+///
+/// Unlike [`SetIconRequest`], which hangs a small icon off each text line,
+/// this renders one large icon in its own column on the left of the instance,
+/// vertically centred across the whole block; both text lines start to its
+/// right. Per-line icons keep working in the remaining text area. `None`
+/// clears the column icon and returns the instance to the plain layout.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetLeadingIconRequest {
+    pub id: String,
+    /// The column icon, or `None` to clear it. See [`IconSpec::size`] for the
+    /// size semantics (only honoured here).
+    #[serde(default)]
+    pub icon: Option<IconSpec>,
 }
 
 /// Select which Tauri webview window is used as the settings popup.

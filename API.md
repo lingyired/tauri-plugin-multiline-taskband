@@ -81,6 +81,7 @@ All functions are async and return a `Promise`.
 | `setFontFamily` | `setFontFamily(options: SetFontFamilyOptions): Promise<void>` | Per-line font family. Pass `null` (or `''`) for a line to reset it to the system default font. Unknown family names fall back silently — same semantics as the menubar plugin. |
 | `setColors` | `setColors(options: SetColorsOptions): Promise<void>` | Per-line text paint. Each line takes a [ColorStyle](#colorstyle): `default` follows the system colour (tracks light/dark mode), `solid` is a `#rrggbb` value. |
 | `setIcon` | `setIcon(options: SetIconOptions): Promise<void>` | Per-line leading icon in front of the text. Each line takes an [IconSpec](#iconspec--seticonoptions) (`null` clears that line). Icons are sized to the line's text height, decoded and cached by origin, and missing/undecodable assets silently render as no icon. |
+| `setLeadingIcon` | `setLeadingIcon(options: SetLeadingIconOptions): Promise<void>` | Instance-level column icon: one large icon in its own column on the left, vertically centred across the whole block; text starts to its right. See [SetLeadingIconOptions](#setleadingiconoptions). `icon: null` clears it. |
 | `setBold` | `setBold(options: SetBoldOptions): Promise<void>` | Force the top and/or bottom line bold (`true` = bold, `false` = normal weight; each line independent). |
 | `setAlignment` | `setAlignment(options: SetAlignmentOptions): Promise<void>` | Per-line horizontal alignment: `0` left (default), `1` center, `2` right. See [SetAlignmentOptions](#setalignmentoptions--alignment). |
 
@@ -188,10 +189,16 @@ export interface SetIconOptions {
   bottom?: IconSpec | null
 }
 
+export interface SetLeadingIconOptions {
+  id: string
+  icon?: IconSpec | null
+}
+
 export interface IconSpec {
   path?: string
   data?: string
   tint?: boolean
+  size?: number | null
 }
 
 export interface SetBoldOptions { id: string; top: boolean; bottom: boolean }
@@ -302,6 +309,22 @@ await setIcon({ id: 'group-a', top: null, bottom: null })
 - **Tintable assets**: `tint: true` discards the asset's colours entirely — only the alpha distribution remains, per-pixel, as coverage. Feed it monochrome silhouettes or line art (the fill colour is irrelevant); translucency paints at partial concentration. Coloured or gradient artwork is flattened to a single-colour shape, so keep `tint` off for brand-coloured icons. The demo ships 15 built-in presets (`examples/demo/src/icons/*.svg`, embedded in `src/iconPresets.js`) picked from the popup's dropdown and delivered through the `data` channel — no file path needed.
 - **Failure semantics**: a missing file or undecodable content is logged and renders as no icon; the command does not reject. Decoded assets are cached by origin (`path` string, or a content hash of `data`), so several instances can share one asset without re-decoding; the cache is pruned when the last referencing instance disappears.
 
+### SetLeadingIconOptions
+
+The instance-level leading (column) icon — mirrors the menubar plugin's `setLeadingIcon` one-for-one. One large icon in its own column on the left of the instance, vertically centred across the whole block; both text lines start to its right.
+
+```js
+await setLeadingIcon({ id: 'group-a', icon: { data: svg, tint: true } })
+await setLeadingIcon({ id: 'group-a', icon: { path: 'C:\\icons\\logo.png', size: 22 } })
+await setLeadingIcon({ id: 'group-a', icon: null }) // clear → back to the plain layout
+```
+
+- **`size`** (physical pixels) is honoured only here — per-line icons ignore it. Omit (or `null`) to span the full block height; an explicit value is clamped to `8..=block height`.
+- **Coexists with `setIcon`**: the column icon occupies the left column; per-line icons keep rendering inline in the remaining text area, and each line's alignment operates inside that region.
+- **Tint** follows the first visible line's colour (same semantics as the per-line tint).
+- **Both lines hidden + a decodable column icon** → the item survives and renders just the centred icon; clearing the icon (or an undecodable asset) hides it again.
+- **Failure semantics** match the per-line icon: a missing/undecodable asset is logged and the instance renders with no column (text flush left); the cache is shared with `setIcon`.
+
 ### MenuItemDescriptor
 
 A right-click context-menu item descriptor. Mirrors the menubar plugin's type one-for-one, so the same menu tree works on both platforms:
@@ -358,6 +381,7 @@ interface InstanceState {
   bottomVisible: boolean
   topIcon: IconSpec | null
   bottomIcon: IconSpec | null
+  leadingIcon: IconSpec | null
 }
 ```
 
@@ -393,6 +417,7 @@ All guest-js functions are thin wrappers over these. Payloads are wrapped in a s
 | `plugin:multiline-taskband\|close_popup` | `{ id }` |
 | `plugin:multiline-taskband\|toggle_popup` | `{ id }` |
 | `plugin:multiline-taskband\|set_menu` | `{ id, items?: MenuItemDescriptor[] \| null }` |
+| `plugin:multiline-taskband\|set_leading_icon` | `{ id, icon?: IconSpec \| null }` |
 
 `ColorStyle` serialises as a tagged enum: `{ "type": "default" }` or `{ "type": "solid", "value": "#FF4F44" }`.
 
@@ -421,6 +446,7 @@ app.multiline_taskband().set_text("group-a".into(), "A股".into(), "+1.23%".into
 | `set_edge_margins(left: Option<i32>, right: Option<i32>)` | `set_edge_margins` |
 | `set_colors(id, top, bottom)` | `set_colors` |
 | `set_icon(id, top: Option<IconSpec>, bottom: Option<IconSpec>)` | `set_icon` |
+| `set_leading_icon(id, icon: Option<IconSpec>)` | `set_leading_icon` |
 | `set_bold(id, top, bottom)` | `set_bold` |
 | `set_alignment(id, top, bottom)` | `set_alignment` |
 | `set_visible(id, visible)` | `set_visible` |

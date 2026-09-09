@@ -250,6 +250,24 @@ impl<R: Runtime> MultilineTaskband<R> {
         }
     }
 
+    /// Set the instance-level leading (column) icon: one large icon in its own
+    /// column on the left, vertically centred across the whole block, with
+    /// both text lines starting to its right (mirrors the menubar plugin's
+    /// `set_leading_icon`). `None` clears it. See [`IconSpec`] — its `size`
+    /// field is honoured here (physical pixels, clamped to the block height;
+    /// unset = full block height).
+    pub fn set_leading_icon(&self, id: String, icon: Option<IconSpec>) -> crate::Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            native::set_leading_icon(id, icon)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (id, icon);
+            Err(crate::Error::UnsupportedPlatform)
+        }
+    }
+
     pub fn rect(&self, id: String) -> crate::Result<Rect> {
         #[cfg(target_os = "windows")]
         {
